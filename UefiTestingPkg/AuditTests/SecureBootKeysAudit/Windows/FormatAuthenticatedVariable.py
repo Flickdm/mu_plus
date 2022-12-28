@@ -1,5 +1,9 @@
 #!python
 
+"""
+ Imitates Format-SecureBootUefi and signs a variable in accordance with EFI_AUTHENTICATION_2
+"""
+
 import struct
 import time
 import tempfile
@@ -22,8 +26,9 @@ ATTRIBUTE_MAP = {
     "NV": UEFI_MULTI_PHASE.EFI_VARIABLE_NON_VOLATILE,
     "BS": UEFI_MULTI_PHASE.EFI_VARIABLE_BOOTSERVICE_ACCESS,
     "RT": UEFI_MULTI_PHASE.EFI_VARIABLE_RUNTIME_ACCESS,
-    "HW": UEFI_MULTI_PHASE.EFI_VARIABLE_HARDWARE_ERROR_RECORD,
-    "AW": UEFI_MULTI_PHASE.EFI_VARIABLE_AUTHENTICATED_WRITE_ACCESS,
+    # Disabling the following two, because they are unsupported (by this script) and deprecated (in UEFI)
+    # "HW": UEFI_MULTI_PHASE.EFI_VARIABLE_HARDWARE_ERROR_RECORD,
+    # "AW": UEFI_MULTI_PHASE.EFI_VARIABLE_AUTHENTICATED_WRITE_ACCESS,
     "AT": UEFI_MULTI_PHASE.EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS
 }
 
@@ -44,7 +49,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
 
-def export_c_array(args: argparse.Namespace, bin_file: str) -> None:
+def export_c_array(bin_file: str, output_dir: str, name: str, c_name: str) -> None:
     """
     Converts a given binary file to a UEFI typed C array
 
@@ -52,16 +57,16 @@ def export_c_array(args: argparse.Namespace, bin_file: str) -> None:
     :bin file: binary file to convert
     """
 
-    source_file = args.data_file + ".c"
-    header_file = args.data_file + ".h"
-    if args.output_dir:
+    source_file = bin_file + ".c"
+    header_file = bin_file + ".h"
+    if output_dir:
         filename = os.path.split(source_file)[-1]
-        source_file = os.path.join(args.output_dir, filename)
+        source_file = os.path.join(output_dir, filename)
 
-    variable_name = args.name
-    if args.c_name:
-        variable_name = args.c_name    
-    
+    variable_name = name
+    if c_name:
+        variable_name = c_name
+
     c_array = f"UINT8 {variable_name}[] = {{"
     with open(bin_file, 'rb') as f:
 
@@ -91,23 +96,26 @@ def export_c_array(args: argparse.Namespace, bin_file: str) -> None:
         f.write(f"extern UINT8 {variable_name}[];\n")
         f.write(f"extern UINTN {variable_name}Size;\n\n")
 
+    logger.info("Created %s", header_file)
+
 
 def parse_args():
     """
     Parses arguments from the command line
     """
     parser = argparse.ArgumentParser()
+
     parser.add_argument("name", help="UTF16 Formated Name of Variable")
     parser.add_argument(
         "guid", help="UUID of the namespace the variable belongs to. (Ex. 12345678-1234-1234-1234-123456789abc)", type=uuid.UUID)
+    parser.add_argument(
+        "attributes", type=str, help="Variable Attributes, AT is a required (Ex \"NV,BT,RT,AT\")")
+    parser.add_argument(
+        "data_file", help="Binary file of variable data. An empty file is accepted and will be used to cle ar the authenticated data")
     parser.add_argument("certificate",
                         help="Certificate to sign the authenticated data with (Accepted: .pfx, .cer")
     parser.add_argument(
-        "data_file", help="Binary file of variable data. An empty file is accepted and will be used to clear the authenticated data")
-    parser.add_argument(
-        "--cert-password", help="certificate password", default="password")
-    parser.add_argument(
-        "--attributes", default=["NV", "BS", "RT", "AT"], type=str, nargs='+')
+        "--cert-password", help="certificate password")
     parser.add_argument("--export-c-array", action="store_true",
                         default=False, help="Exports a given buffer as a C array")
     parser.add_argument(
@@ -117,22 +125,41 @@ def parse_args():
 
     args = parser.parse_args()
 
+    if ',' not in args.attributes:
+        logger.error("Must provide at least one of \"NV\", \"BS\" or \"RT\"")
+        sys.exit(1)
+
+    if 'AT' not in args.attributes:
+        logger.error(
+            "The time based authenticated variable attribute (\"AT\") must be set")
+        sys.exit(1)
+
     # verify the attributes and calculate
     attributes_value = 0
-    for a in args.attributes:
+    for a in args.attributes.split(','):
         if a not in ATTRIBUTE_MAP:
             logger.error("%s is not a valid attribute", a)
             sys.exit(1)
 
-        attributes_value |= ATTRIBUTE_MAP[a]
+        attributes_value |= ATTRIBUTE_MAP[a.upper()]
 
     setattr(args, "attributes_value", attributes_value)
 
     return args
 
 
-def main():
-    args = parse_args()
+def create_authenticated_variable(tm, name, guid, attributes, data_file, c_name, certificate, cert_password, output_dir):
+    """
+    :param tm: Time object representing the time at which this variable was created
+    :param name: UEFI variable name
+    :param guid: The GUID namespace that the variable belongs to
+    :param attributes: The attributes the variable 
+    :param data_file: The filename containing the binary data to be serialized, hashed and converted into an
+         authenticated variable (May be an empty file)
+    :param certificate: the certificate to sign the binary data with (May be PKCS7 or PFX)
+    :param cert_password: the password for the certificate
+    :param output_dir: directory to drop the signed authenticated variable data
+    """
 
     # 1. Create a descriptor
     #   Create an EFI_VARIABLE_AUTHENTICATION_2 descriptor where:
@@ -141,8 +168,6 @@ def main():
 
     # CertType will be set later
 
-    # Generate a  timestamp
-    tm = time.localtime()
     efi_time = struct.pack(
         EFI_TIME_FMT,
         tm.tm_year,
@@ -158,16 +183,18 @@ def main():
         0)
 
     # Generate the hash data to be digested
-    buffer = args.name.encode('utf_16_le') + args.guid.bytes_le + \
-        struct.pack('<I', args.attributes_value) + efi_time
+    buffer = name.encode('utf_16_le') + guid.bytes_le + \
+        struct.pack('<I', attributes) + efi_time
 
     # Save off the variable data, we will need it later
     variable_data = b""
-    if args.data_file:
-        with open(args.data_file, 'rb') as f:
+    if data_file:
+        with open(data_file, 'rb') as f:
             variable_data = f.read()
-    else:
-        args.data_file = args.empty_name
+
+    data_file = os.path.join(os.path.split(data_file)[0], name)
+    if c_name:
+        data_file = os.path.join(os.path.split(data_file)[0], c_name)
 
     buffer += variable_data
 
@@ -190,10 +217,10 @@ def main():
     # Use signtool to produce a digest of the variable
     # signtool sign /fd sha256 /p7ce DetachedSignedData /p7co 1.2.840.113549.1.7.2 /p7 "C:\\" /f "Cert.pfx" /p password /debug /v "data.bin"
     out = DetachedSignWithSignTool(signtoolpath, DATA_BUFFER_FILE,
-                                   SIGNATURE_BUFFER_FILE, args.certificate, args.cert_password)
+                                   SIGNATURE_BUFFER_FILE, certificate, cert_password, AutoSelect=True)
     if out != 0:
         logger.error("Signtool Failed")
-        sys.exit(1) # Fail
+        return None
 
     signature = ""
     with open(SIGNATURE_BUFFER_FILE, 'rb') as f:
@@ -206,10 +233,10 @@ def main():
                           WIN_CERT_TYPE_EFI_GUID,
                           uuid.UUID(EFI_CERT_TYPE_PKCS7_GUID).bytes_le)
 
-    output_file = args.data_file + ".signed"
-    if args.output_dir:
+    output_file = data_file + ".signed"
+    if output_dir:
         filename = os.path.split(output_file)[-1]
-        output_file = os.path.join(args.output_dir, filename)
+        output_file = os.path.join(output_dir, filename)
 
     # 5. Set AuthInfo.CertData to the DER-encoded PKCS #7 SignedData value.
 
@@ -222,8 +249,25 @@ def main():
 
     logger.info("Created %s", output_file)
 
+    return output_file
+
+
+def main():
+    args = parse_args()
+
+    # Generate a  timestamp
+    tm = time.localtime()
+
+    # def create_authenticated_variable(tm, name, guid, attributes, data_file, certificate, cert_password, output_dir):
+
+    output_file = create_authenticated_variable(
+        tm, args.name, args.guid, args.attributes_value, args.data_file, args.c_name, args.certificate,
+        args.cert_password, args.output_dir)
+    if not output_file:
+        sys.exit(1)
+
     if args.export_c_array:
-        export_c_array(args, output_file)
+        export_c_array(output_file, args.output_dir, args.name, args.c_name, )
 
     # Success
     sys.exit(0)

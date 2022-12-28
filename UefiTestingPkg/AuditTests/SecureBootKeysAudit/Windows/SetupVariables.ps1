@@ -1,10 +1,10 @@
-
-# https://www.rfc-editor.org/rfc/rfc5280#section-4.2
-# https://github.com/MicrosoftDocs/windows-powershell-docs/blob/main/docset/winserver2022-ps/secureboot/Format-SecureBootUEFI.md
-
+#Requires -RunAsAdministrator
+# This script *unfortunately* requires ADMIN privileges due to New-SelfSignedCertificate
 
 # Windows Certificate Location
 $CertificateStore = "Cert:\LocalMachine\My\"
+
+# Fordure Structure Layout
 $DataFolder = "./Data"
 $CertName = "Certs"
 $CertificateFolder = "$DataFolder/$CertName"
@@ -15,10 +15,12 @@ $Organization = "contoso"
 $OutputFolder = "./Output"
 
 
-#Export Password
-$MyPassword = ConvertTo-SecureString "password" -Force -AsPlainText
+# Certificate Password
+$CertificatePassword = "password"
+$SecureCertificatePassword = ConvertTo-SecureString $CertificatePassword -Force -AsPlainText
 
-# UEFI Guid 
+# UEFI Variable shared data
+$Attributes = "NV,BS,RT,AT"
 $VariableGuid = "b3f4fb27-f382-4484-9b77-226b2b4348bb"
 $VariableDataFormat = "Hello " # The name of the cert will be appended on
 
@@ -63,16 +65,16 @@ $Output = New-SelfSignedCertificate `
 
 $2kMockPKCert = $CertificateStore + $Output.Thumbprint
 Export-Certificate -Cert $2kMockPKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $2kMockPKCert -FilePath $PfxCertFilePath -Password $MyPassword
+Export-PfxCertificate -Cert $2kMockPKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
 
 # Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $PfxCertFilePath $TestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
 
 # Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $PfxCertFilePath $EmptyTestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
@@ -104,16 +106,16 @@ $Output = New-SelfSignedCertificate `
 
 $2kMockKEKCert = $CertificateStore + $Output.Thumbprint
 Export-Certificate -Cert $2kMockKEKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $2kMockKEKCert -FilePath $PfxCertFilePath -Password $MyPassword
+Export-PfxCertificate -Cert $2kMockKEKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
 
 # Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $CertFilePath $TestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
 
 # Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $CertFilePath $EmptyTestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
@@ -144,19 +146,20 @@ $Output = New-SelfSignedCertificate `
 
 $2kMockLeafCert = $CertificateStore + $Output.Thumbprint
 Export-Certificate -Cert $2kMockLeafCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $2kMockLeafCert -FilePath $PfxCertFilePath -Password $MyPassword
+Export-PfxCertificate -Cert $2kMockLeafCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
 
 # Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $PfxCertFilePath $TestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
 
 # Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $PfxCertFilePath $EmptyTestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
+
 
 # =============================================================================
 # Clean up and move the files to their final destination
@@ -208,19 +211,20 @@ $Output = New-SelfSignedCertificate `
 
 $3kMockPKCert = $CertificateStore + $Output.Thumbprint
 Export-Certificate -Cert $3kMockPKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $3kMockPKCert -FilePath $PfxCertFilePath -Password $MyPassword
+Export-PfxCertificate -Cert $3kMockPKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
 
 # Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $CertFilePath $TestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
 
 # Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $CertFilePath $EmptyTestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
+
 
 # =============================================================================
 # Generates a Intermediate Cert (Key Exchange Key) signed by the Mock PK
@@ -249,16 +253,16 @@ $Output = New-SelfSignedCertificate `
 
 $3kMockKEKCert = $CertificateStore + $Output.Thumbprint
 Export-Certificate -Cert $3kMockKEKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $3kMockKEKCert -FilePath $PfxCertFilePath -Password $MyPassword
+Export-PfxCertificate -Cert $3kMockKEKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
 
 # Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $CertFilePath $TestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
 
 # Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $CertFilePath $EmptyTestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
@@ -289,16 +293,16 @@ $Output = New-SelfSignedCertificate `
 
 $3kMockLeafCert = $CertificateStore + $Output.Thumbprint
 Export-Certificate -Cert $3kMockLeafCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $3kMockLeafCert -FilePath $PfxCertFilePath -Password $MyPassword
+Export-PfxCertificate -Cert $3kMockLeafCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
 
 # Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $PfxCertFilePath $TestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
 
 # Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $PfxCertFilePath $EmptyTestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
@@ -353,16 +357,16 @@ $Output = New-SelfSignedCertificate `
 
 $4kMockPKCert = $CertificateStore + $Output.Thumbprint
 Export-Certificate -Cert $4kMockPKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $4kMockPKCert -FilePath $PfxCertFilePath -Password $MyPassword
+Export-PfxCertificate -Cert $4kMockPKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
 
 # Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $CertFilePath $TestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
 
 # Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $CertFilePath $EmptyTestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
@@ -394,19 +398,20 @@ $Output = New-SelfSignedCertificate `
 
 $4kMockKEKCert = $CertificateStore + $Output.Thumbprint
 Export-Certificate -Cert $4kMockKEKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $4kMockKEKCert -FilePath $PfxCertFilePath -Password $MyPassword
+Export-PfxCertificate -Cert $4kMockKEKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
 
 # Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $CertFilePath $TestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
 
 # Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $CertFilePath $EmptyTestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
+
 
 # =============================================================================
 # Generates a Leaf Certificate signed by the Mock KEK
@@ -434,19 +439,20 @@ $Output = New-SelfSignedCertificate `
 
 $4kMockLeafCert = $CertificateStore + $Output.Thumbprint
 Export-Certificate -Cert $4kMockLeafCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $4kMockLeafCert -FilePath $PfxCertFilePath -Password $MyPassword
+Export-PfxCertificate -Cert $4kMockLeafCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
 
 # Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $PfxCertFilePath $TestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
 
 # Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $PfxCertFilePath $EmptyTestDataPath --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
+python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
 if ($LASTEXITCODE -ne 0) {
     Exit
 }
+
 
 # =============================================================================
 # Clean up and move the files to their final destination

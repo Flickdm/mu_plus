@@ -24,7 +24,6 @@
 #define MOCK_LEAF_CERTIFICATE_INDEX  (2)
 #define CHAIN_LENGTH                 (3)
 
-
 typedef struct {
   CHAR16    *Variable;         // Name of the UEFI Variable
   UINT32    Attributes;        // The attributes for the variable
@@ -44,7 +43,7 @@ typedef struct {
 
 // UEFI variables must have the same name, guid, and attributes to be accepted
 
-STATIC BASIC_INSTALL_CHAIN_CONTEXT m2kInstall = {
+STATIC BASIC_INSTALL_CHAIN_CONTEXT  m2kInstall = {
   .TestName                       = L"Basic Install Chain",
   .Chain[MOCK_PLATFORM_KEY_INDEX] =  {
     .Variable   = L"MockPK",
@@ -83,7 +82,7 @@ STATIC BASIC_INSTALL_CHAIN_CONTEXT m2kInstall = {
   .ExpectedStatus1 = UNIT_TEST_PASSED
 };
 
-STATIC BASIC_INSTALL_CHAIN_CONTEXT m3kInstall = {
+STATIC BASIC_INSTALL_CHAIN_CONTEXT  m3kInstall = {
   .TestName                       = L"3k Install Chain",
   .Chain[MOCK_PLATFORM_KEY_INDEX] =  {
     .Variable   = L"MockPK",
@@ -122,7 +121,7 @@ STATIC BASIC_INSTALL_CHAIN_CONTEXT m3kInstall = {
   .ExpectedStatus1 = UNIT_TEST_PASSED
 };
 
-STATIC BASIC_INSTALL_CHAIN_CONTEXT m4kInstall = {
+STATIC BASIC_INSTALL_CHAIN_CONTEXT  m4kInstall = {
   .TestName                       = L"4k Install Chain",
   .Chain[MOCK_PLATFORM_KEY_INDEX] =  {
     .Variable   = L"MockPK",
@@ -257,11 +256,11 @@ InstallMockChain (
                                );
 
     if (EFI_ERROR (Status)) {
-      DEBUG ((DEBUG_ERROR, "Clearing the Variable \"%s\" of test \"%s\" with SetVariable failed. Return code %r\n", Var.Variable, Btc->TestName, Status));
+      DEBUG ((DEBUG_ERROR, "Clearing the Variable \"%s\" of test \"%s\" with SetVariable failed. (Return Code: %r)\n", Var.Variable, Btc->TestName, Status));
       goto Exit;
     }
 
-    DEBUG ((DEBUG_INFO, "Variable \"%s\" of test \"%s\" cleared\n", Var.Variable, Btc->TestName, Status));
+    DEBUG ((DEBUG_INFO, "Variable \"%s\" of test \"%s\" cleared (Return Code: %r)\n", Var.Variable, Btc->TestName, Status));
   }
 
   TestStatus = UNIT_TEST_PASSED;
@@ -276,13 +275,63 @@ Exit:
 }
 
 static
-UNIT_TEST_STATUS
+VOID
 EFIAPI
-UpdateVariable (
-  IN UNIT_TEST_CONTEXT Context
+SetupVariableChain (
+  VOID
   )
 {
+  // The platform Key
+  m2kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].Data          = m2kMockPK;
+  m2kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].DataSize      = m2kMockPKSize;
+  m2kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearData     = m2kMockPKDelete;
+  m2kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearDataSize = m2kMockPKDeleteSize;
 
+  // The Key Exchange Key
+  m2kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].Data          = m2kMockKEK;
+  m2kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].DataSize      = m2kMockKEKSize;
+  m2kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearData     = m2kMockKEKDelete;
+  m2kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearDataSize = m2kMockKEKDeleteSize;
+
+  // The Key Exchange Key
+  m2kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].Data          = m2kMockLeaf;
+  m2kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].DataSize      = m2kMockLeafSize;
+  m2kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearData     = m2kMockLeafDelete;
+  m2kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearDataSize = m2kMockLeafDeleteSize;
+
+  m3kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].Data          = m3kMockPK;
+  m3kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].DataSize      = m3kMockPKSize;
+  m3kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearData     = m3kMockPKDelete;
+  m3kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearDataSize = m3kMockPKDeleteSize;
+
+  // The Key Exchange Key
+  m3kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].Data          = m3kMockKEK;
+  m3kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].DataSize      = m3kMockKEKSize;
+  m3kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearData     = m3kMockKEKDelete;
+  m3kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearDataSize = m3kMockKEKDeleteSize;
+
+  // The Key Exchange Key
+  m3kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].Data          = m3kMockLeaf;
+  m3kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].DataSize      = m3kMockLeafSize;
+  m3kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearData     = m3kMockLeafDelete;
+  m3kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearDataSize = m3kMockLeafDeleteSize;
+
+  m4kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].Data          = m4kMockPK;
+  m4kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].DataSize      = m4kMockPKSize;
+  m4kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearData     = m4kMockPKDelete;
+  m4kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearDataSize = m4kMockPKDeleteSize;
+
+  // The Key Exchange Key
+  m4kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].Data          = m4kMockKEK;
+  m4kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].DataSize      = m4kMockKEKSize;
+  m4kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearData     = m4kMockKEKDelete;
+  m4kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearDataSize = m4kMockKEKDeleteSize;
+
+  // The Key Exchange Key
+  m4kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].Data          = m4kMockLeaf;
+  m4kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].DataSize      = m4kMockLeafSize;
+  m4kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearData     = m4kMockLeafDelete;
+  m4kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearDataSize = m4kMockLeafDeleteSize;
 }
 
 /**
@@ -339,66 +388,13 @@ SecureBootKeysAuditMain (
     goto EXIT;
   }
 
-  // TODO convert this to a list
-  // The platform Key
-  m2kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].Data          = m2kMockPK;
-  m2kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].DataSize      = m2kMockPKSize;
-  m2kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearData     = m2kMockPKDelete;
-  m2kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearDataSize = m2kMockPKDeleteSize;
-
-  // The Key Exchange Key
-  m2kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].Data          = m2kMockKEK;
-  m2kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].DataSize      = m2kMockKEKSize;
-  m2kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearData     = m2kMockKEKDelete;
-  m2kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearDataSize = m2kMockKEKDeleteSize;
-
-  // The Key Exchange Key
-  m2kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].Data          = m2kMockLeaf;
-  m2kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].DataSize      = m2kMockLeafSize;
-  m2kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearData     = m2kMockLeafDelete;
-  m2kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearDataSize = m2kMockLeafDeleteSize;
+  SetupVariableChain();
 
   // 1.1 Install the MockPK
   //    This will act as a platform Key for the rest of the Variables
   // -----------Suite-----------Description-------------Class-------------------Test Function-------------Pre---Clean-Context
   AddTestCase (BaselineKeysTest, "2kKeysTest", "2kKeysTest", InstallMockChain, NULL, NULL, &m2kInstall);
-
-  m3kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].Data          = m3kMockPK;
-  m3kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].DataSize      = m3kMockPKSize;
-  m3kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearData     = m3kMockPKDelete;
-  m3kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearDataSize = m3kMockPKDeleteSize;
-
-  // The Key Exchange Key
-  m3kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].Data          = m3kMockKEK;
-  m3kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].DataSize      = m3kMockKEKSize;
-  m3kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearData     = m3kMockKEKDelete;
-  m3kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearDataSize = m3kMockKEKDeleteSize;
-
-  // The Key Exchange Key
-  m3kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].Data          = m3kMockLeaf;
-  m3kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].DataSize      = m3kMockLeafSize;
-  m3kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearData     = m3kMockLeafDelete;
-  m3kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearDataSize = m3kMockLeafDeleteSize;
-
   AddTestCase (BaselineKeysTest, "3kKeysTest", "3kKeysTest", InstallMockChain, NULL, NULL, &m3kInstall);
-  
-  m4kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].Data          = m4kMockPK;
-  m4kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].DataSize      = m4kMockPKSize;
-  m4kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearData     = m4kMockPKDelete;
-  m4kInstall.Chain[MOCK_PLATFORM_KEY_INDEX].ClearDataSize = m4kMockPKDeleteSize;
-
-  // The Key Exchange Key
-  m4kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].Data          = m4kMockKEK;
-  m4kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].DataSize      = m4kMockKEKSize;
-  m4kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearData     = m4kMockKEKDelete;
-  m4kInstall.Chain[MOCK_KEY_EXCHANGE_KEY_INDEX].ClearDataSize = m4kMockKEKDeleteSize;
-
-  // The Key Exchange Key
-  m4kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].Data          = m4kMockLeaf;
-  m4kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].DataSize      = m4kMockLeafSize;
-  m4kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearData     = m4kMockLeafDelete;
-  m4kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearDataSize = m4kMockLeafDeleteSize;
-
   AddTestCase (BaselineKeysTest, "4kKeysTest", "4kKeysTest", InstallMockChain, NULL, NULL, &m4kInstall);
 
   //
