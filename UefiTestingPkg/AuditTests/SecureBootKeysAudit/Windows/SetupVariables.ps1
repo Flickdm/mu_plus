@@ -1,22 +1,17 @@
 #Requires -RunAsAdministrator
 # This script *unfortunately* requires ADMIN privileges due to New-SelfSignedCertificate
 
-# Remove all generated certificates that are left over
-$items = Get-ChildItem -Path Cert:\LocalMachine\My\ -Recurse
-foreach ($item in $items) {
-     if($item.Subject -like "*contoso*") {
-         $item | Remove-Item -Force
-     }
-}
-
+# This script relies on this script to format and sign Authenticated Variables
 $FormatAuthVar = "./FormatAuthenticatedVariable.py"
 
-# Have to leave this outside the globals - since it's inaccessible during construction of the hashtable
+# Have to leave this outside the globals - since it's inaccessible during initialization of the hashtable
 $Password = "password"
+$DataFolder = "./Data"
+$TestDataName = "TestData"
+$CertName = "Certs"
 
 # Global Variables used throughout the script
 $Globals = @{
-    # Windows Certificate Location
     Certificate = @{
         Store = "Cert:\LocalMachine\My\"
         Organization = "contoso"
@@ -29,31 +24,36 @@ $Globals = @{
         Guid = "b3f4fb27-f382-4484-9b77-226b2b4348bb"
         Format = "Hello "
     }
+    Layout = @{
+        DataFolder = $DataFolder
+        CertName = $CertName 
+        CertificateFolder = "$DataFolder/$CertName"
+        TestDataName = $TestDataName
+        TestDataFolder = "$DataFolder/$TestDataName"
+    }
 }
 
-
-# Folder Structure Layout
-$DataFolder = "./Data"
-$CertName = "Certs"
-$CertificateFolder = "$DataFolder/$CertName"
-$TestDataName = "TestData"
-$TestDataFolder = "$DataFolder/$TestDataName"
-
-$OutputFolder = "./Output"
-
 # Clean up from a pervious run
-Remove-Item $DataFolder -Recurse -Force -Confirm:$false
-New-Item -Path $DataFolder -ItemType Directory
-New-Item -Path $CertificateFolder -ItemType Directory
-New-Item -Path $TestDataFolder -ItemType Directory
-
-Remove-Item $OutputFolder -Recurse -Force -Confirm:$false
-New-Item -Path $OutputFolder -ItemType Directory
-
+Remove-Item $Globals.Layout.DataFolder -Recurse -Force -Confirm:$false
+New-Item -Path $Globals.Layout.DataFolder -ItemType Directory
+New-Item -Path $Globals.Layout.CertificateFolder -ItemType Directory
+New-Item -Path $Globals.Layout.TestDataFolder -ItemType Directory
 
 function GenerateCertificate {
     <#
     This function generates a certificate used for mock testing
+    
+    :param KeyLength: The size in bits of the length of the key (ex 2048)
+    :param CommonName: Common name field of the certificate
+    :param Variable Name: Name of the variable (Not important for the certificate but used to track which pfx is tied to which signed data)
+    :param VariablePrefix: Prefix to append to the beginning of the certificate for tracking (Not Important)
+    :param Signer: Signing certificate object from the Certificate Store
+    
+    :return: HashTable Object
+        {
+            .Cert     # Path to Certificate in the Certificate Store 
+            .CertPath # Path to the pfx file generated
+        }
     #>
 
     param (
@@ -65,7 +65,7 @@ function GenerateCertificate {
     )
     
     # Return object on success
-    $PfxCertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.pfx"
+    $PfxCertFilePath = Join-Path -Path $Globals.Layout.CertificateFolder -ChildPath "${VariablePrefix}${VariableName}.pfx"
 
     # Text Extensions:
     # Code Signing: 2.5.29.37={text}1.3.6.1.5.5.7.3.3
@@ -78,21 +78,25 @@ function GenerateCertificate {
     #       A pathlength set too short will not be valid when checked by a validity engine
 
     # Set the options that are required for signing
+    $Organization = $Globals.Certificate.Organization
+
     $SignedCertificateParams = @{
-        DnsName = "www.${Globals.Certificate.Organization}.com"
+        DnsName = "www.$Organization.com"
         CertStoreLocation = $Globals.Certificate.Store
         KeyAlgorithm = "RSA"
         KeyLength = $KeyLength
-        Subject = "CN=$CommonName O=${Globals.Certificate.Organization}"
+        Subject = "CN=$CommonName O=$Organization"
         NotAfter = (Get-Date).AddYears($Globals.Certificate.LifeYears)
-        TextExtension = @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=0&pathlength=16")
+        TextExtension = @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=1")
+        KeyUsage = @("CertSign", "CRLSign", "DigitalSignature")
     }
 
-    if (!$Signer) {
-        # If there is no signer, than this is to be treated as a Self Signed CA
-        $SignedCertificateParams.TextExtension = @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=1")
-        $SignedCertificateParams.KeyUsage = @("CertSign", "CRLSign", "DigitalSignature")
+    if ($Signer) {
+        $SignedCertificateParams["TextExtension"] = @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=0&pathlength=16")
+        $SignedCertificateParams["Signer"] = $Signer
     }
+
+    Write-Host "> New-SelfSignedCertificate " @SignedCertificateParams
 
     # Generate the new certifcate with the chosen params
     $Output = New-SelfSignedCertificate @SignedCertificateParams
@@ -101,28 +105,44 @@ function GenerateCertificate {
     }
 
     # The path of the certificate in the store
-    $MockCert = $Globals.Certificate.Store + $Output.Thumbprint
+    $MockCert = $Globals.Certificate.Store + $Output.Thumbprint 
     
     # export the cetificate as a PFX
-    Export-PfxCertificate -Cert $MockCert -FilePath $PfxCertFilePath -Password $Globals.Certificate.SecurePassword
+    Export-PfxCertificate -Cert $MockCert -FilePath $PfxCertFilePath -Password $Globals.Certificate.SecurePassword | Out-Null
     if ($LASTEXITCODE -ne 0) {
         return $null
-    }  
+    }
 
-    return $PfxCertFilePath
+    $ReturnObject = @{
+        Cert = $MockCert
+        CertPath = $PfxCertFilePath  
+    }
+
+    return $ReturnObject
 }
 
 function GenerateTestData {
+    <#
+    This function generates test data for the mock variables and then signs it with the provided certificate
+
+    :param VariableName: UEFI Variable Name (IMPORTANT This needs to match the variable used on the device that is used for signing)
+    :param VariablePrefix: Variable prefix used for tracking
+    :param CommonName: Used in conjunction with Global.Variable.Format to produce content that is unique for testing
+    :param PfxCertFilePath: The path to the Pfx Certificate
+
+    :return:
+        boolean true if Success, false otherwise
+    #>
+
     param (
         [String]$VariableName,
         [String]$VariablePrefix,
         [String]$CommonName,
-        $PfxCertFilePath
+        [String]$PfxCertFilePath
     )
 
-
-    $TestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}.bin"
-    $EmptyTestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}Empty.bin"
+    $TestDataPath = Join-Path -Path $Globals.Layout.TestDataFolder -ChildPath "${VariableName}.bin"
+    $EmptyTestDataPath = Join-Path -Path  $Globals.Layout.TestDataFolder -ChildPath "${VariableName}Empty.bin"
 
     # Create the empty file
     New-Item -Name ${EmptyTestDataPath} -ItemType File
@@ -135,9 +155,6 @@ function GenerateTestData {
     if ($LASTEXITCODE -ne 0) {
         return $false
     }
-
-    Write-Host ">>>> $PfxCertFilePath "  $PfxCertFilePath.GetType()
-    Write-Host ($PfxCertFilePath | Format-List | Out-String)
 
     # Generate the data authenticated variable
     python $FormatAuthVar $VariableName $Globals.Variable.Guid $Globals.Variable.Attributes $TestDataPath `
@@ -156,63 +173,47 @@ function GenerateTestData {
     return $true
 }
 
+function CopyDataToFinalDestination {
+    <#
+    Copies the data to the final destination
 
-$CertFilePath = GenerateCertificate 2048 "2k MockPlatformKey" "MockPK" $null
-$CertFilePath = $CertFilePath.value
-#Write-Host ">>>>>>> " $CertFilePath $CertFilePath.GetType()
-#Write-Host ($CertFilePath | Format-List | Out-String)
-Write-Host $CertFilePath
-#$ret = GenerateTestData "MockPK" "m2k" "2k Mock Platform Key" $CertFilePath
+    :param VariablePrefix: Variable prefix used for labeling which variables and certificates are in the folder
 
+    :return: None
+    #>
 
-# Uncomment if you need a cert - this will not keep the entire certificate chain - only the selected certificate
-# Export-Certificate -Cert $MockPKCert -FilePath  $CertFilePath
+    Param (
+        $VariablePrefix
+    )
 
-Exit
+    $TestDataName = $Globals.Layout.TestDataName
+    $DestinationFolder = Join-Path -Path $Globals.Layout.DataFolder -ChildPath "${VariablePrefix}${TestDataName}"
+    New-Item -Path $DestinationFolder -ItemType Directory
+
+    $OutputCertPath = Join-Path -Path $DestinationFolder -ChildPath $Globals.Layout.CertName
+    $OutputTestDataPath = Join-Path -Path $DestinationFolder -ChildPath $Globals.Layout.TestDataName
+    New-Item -Path $OutputCertPath -ItemType Directory
+    New-Item -Path $OutputTestDataPath -ItemType Directory
+
+    Get-ChildItem -Path $Globals.Layout.CertificateFolder -Recurse -File | Move-Item -Destination $OutputCertPath
+    Get-ChildItem -Path $Globals.Layout.TestDataFolder  -Recurse -File | Move-Item -Destination $OutputTestDataPath
+}
+
 
 # =============================================================================
 # 2k Keys
 # =============================================================================
-# Key Length
 $KeyLength = 2048
 $VariablePrefix = "m2k"
 # =============================================================================
-# Generates a self signed platform key
+# Generates a Platform Key CA (PK) self signed
 # =============================================================================
 $CommonName= "2k Mock Platform Key"
 $VariableName = "MockPK"
 
-$PfxCertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.pfx"
-$CertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.cer"
-$TestDataPath = Join-Path -Path $TestDataFolder -ChildPath "$VariableName.bin"
-$EmptyTestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}Empty.bin"
-
-New-Item -Name $EmptyTestDataPath -ItemType File
-"$VariableDataFormat $CommonName" | Out-File -Encoding Ascii -FilePath $TestDataPath
-
-$Output = New-SelfSignedCertificate `
-            -DnsName "www.$Organization.com" `
-            -CertStoreLocation $CertificateStore `
-            -KeyAlgorithm RSA `
-            -KeyLength $KeyLength `
-            -Subject "CN=$CommonName O=$Organization" `
-            -NotAfter (Get-Date).AddYears(10) `
-            -KeyUsage CertSign,CRLSign,DigitalSignature `
-            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=1")
-
-$2kMockPKCert = $CertificateStore + $Output.Thumbprint
-Export-Certificate -Cert $2kMockPKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $2kMockPKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
-
-# Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
-if ($LASTEXITCODE -ne 0) {
-    Exit
-}
-
-# Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
-if ($LASTEXITCODE -ne 0) {
+$2KMockPK = GenerateCertificate $KeyLength $CommonName $VariableName $VariablePrefix $null
+$ret = GenerateTestData $VariableName $VariablePrefix $CommonName $2KMockPK.CertPath
+if (!$ret) {
     Exit
 }
 
@@ -222,38 +223,9 @@ if ($LASTEXITCODE -ne 0) {
 $CommonName= "2k Mock Key Exchange Key"
 $VariableName = "MockKEK"
 
-$PfxCertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.pfx"
-$CertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.cer"
-$TestDataPath = Join-Path -Path $TestDataFolder -ChildPath "$VariableName.bin"
-$EmptyTestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}Empty.bin"
-
-New-Item -Name $EmptyTestDataPath -ItemType File
-"$VariableDataFormat $CommonName" | Out-File -Encoding Ascii -FilePath $TestDataPath
-
-$Output = New-SelfSignedCertificate `
-            -DnsName "www.$Organization.com" `
-            -CertStoreLocation $CertificateStore `
-            -KeyAlgorithm RSA `
-            -KeyLength $KeyLength `
-            -Subject "CN=$CommonName O=$Organization" `
-            -NotAfter (Get-Date).AddYears(10) `
-            -Signer $2kMockPKCert `
-            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=0&pathlength=0")
-            #-KeySpec KeyExchange
-
-$2kMockKEKCert = $CertificateStore + $Output.Thumbprint
-Export-Certificate -Cert $2kMockKEKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $2kMockKEKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
-
-# Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
-if ($LASTEXITCODE -ne 0) {
-    Exit
-}
-
-# Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
-if ($LASTEXITCODE -ne 0) {
+$2KMockKek = GenerateCertificate $KeyLength $CommonName $VariableName $VariablePrefix $2KMockPK.Cert
+$ret = GenerateTestData $VariableName $VariablePrefix $CommonName $2KMockKek.CertPath
+if (!$ret) {
     Exit
 }
 
@@ -263,57 +235,16 @@ if ($LASTEXITCODE -ne 0) {
 $CommonName= "2k Mock Leaf Certficate"
 $VariableName = "MockLeaf"
 
-$PfxCertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.pfx"
-$CertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.cer"
-$TestDataPath = Join-Path -Path $TestDataFolder -ChildPath "$VariableName.bin"
-$EmptyTestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}Empty.bin"
-
-New-Item -Name $EmptyTestDataPath -ItemType File
-"$VariableDataFormat $CommonName" | Out-File -Encoding Ascii -FilePath $TestDataPath
-
-$Output = New-SelfSignedCertificate `
-            -DnsName "www.$Organization.com" `
-            -CertStoreLocation $CertificateStore `
-            -KeyAlgorithm RSA `
-            -KeyLength $KeyLength `
-            -Subject "CN=$CommonName O=$Organization" `
-            -NotAfter (Get-Date).AddYears(10) `
-            -Signer $2kMockKEKCert `
-            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=0&pathlength=0")
-
-$2kMockLeafCert = $CertificateStore + $Output.Thumbprint
-Export-Certificate -Cert $2kMockLeafCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $2kMockLeafCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
-
-# Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
-if ($LASTEXITCODE -ne 0) {
+$2KMockLC = GenerateCertificate $KeyLength $CommonName $VariableName $VariablePrefix $2KMockKEK.Cert
+$ret = GenerateTestData $VariableName $VariablePrefix $CommonName $2KMockLC.CertPath
+if (!$ret) {
     Exit
 }
-
-# Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
-if ($LASTEXITCODE -ne 0) {
-    Exit
-}
-
 
 # =============================================================================
 # Clean up and move the files to their final destination
 # =============================================================================
-
-
-$DestinationFolder = Join-Path -Path $OutputFolder -ChildPath "${VariablePrefix}${TestDataName}"
-New-Item -Path $DestinationFolder -ItemType Directory
-
-$OutputCertPath = Join-Path -Path $DestinationFolder -ChildPath "$CertName"
-$OutputTestDataPath = Join-Path -Path $DestinationFolder -ChildPath "$TestDataName"
-New-Item -Path $OutputCertPath -ItemType Directory
-New-Item -Path $OutputTestDataPath -ItemType Directory
-
-Get-ChildItem -Path $CertificateFolder -Recurse -File | Move-Item -Destination $OutputCertPath
-Get-ChildItem -Path $TestDataFolder -Recurse -File | Move-Item -Destination $OutputTestDataPath
-
+CopyDataToFinalDestination $VariablePrefix
 
 # =============================================================================
 # 3k Keys
@@ -327,41 +258,11 @@ $VariablePrefix = "m3k"
 $CommonName= "3k Mock Platform Key"
 $VariableName = "MockPK"
 
-$PfxCertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.pfx"
-$CertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.cer"
-$TestDataPath = Join-Path -Path $TestDataFolder -ChildPath "$VariableName.bin"
-$EmptyTestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}Empty.bin"
-
-New-Item -Name $EmptyTestDataPath -ItemType File
-"$VariableDataFormat $CommonName" | Out-File -Encoding Ascii -FilePath $TestDataPath
-
-$Output = New-SelfSignedCertificate `
-            -DnsName "www.$Organization.com" `
-            -CertStoreLocation $CertificateStore `
-            -KeyAlgorithm RSA `
-            -KeyLength $KeyLength `
-            -Subject "CN=$CommonName O=$Organization" `
-            -NotAfter (Get-Date).AddYears(10) `
-            -KeyUsage CertSign,CRLSign,DigitalSignature `
-            -Signer $2kMockPKCert `
-            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=1")
-
-$3kMockPKCert = $CertificateStore + $Output.Thumbprint
-Export-Certificate -Cert $3kMockPKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $3kMockPKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
-
-# Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
-if ($LASTEXITCODE -ne 0) {
+$3KMockPK = GenerateCertificate $KeyLength $CommonName $VariableName $VariablePrefix $2KMockPK.Cert
+$ret = GenerateTestData $VariableName $VariablePrefix $CommonName $3KMockPK.CertPath
+if (!$ret) {
     Exit
 }
-
-# Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
-if ($LASTEXITCODE -ne 0) {
-    Exit
-}
-
 
 # =============================================================================
 # Generates a Intermediate Cert (Key Exchange Key) signed by the Mock PK
@@ -369,38 +270,9 @@ if ($LASTEXITCODE -ne 0) {
 $CommonName= "3k Mock Key Exchange Key"
 $VariableName = "MockKEK"
 
-$PfxCertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.pfx"
-$CertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.cer"
-$TestDataPath = Join-Path -Path $TestDataFolder -ChildPath "$VariableName.bin"
-$EmptyTestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}Empty.bin"
-
-New-Item -Name $EmptyTestDataPath -ItemType File
-"$VariableDataFormat $CommonName" | Out-File -Encoding Ascii -FilePath $TestDataPath
-
-$Output = New-SelfSignedCertificate `
-            -DnsName "www.$Organization.com" `
-            -CertStoreLocation $CertificateStore `
-            -KeyAlgorithm RSA `
-            -KeyLength $KeyLength `
-            -Subject "CN=$CommonName O=$Organization" `
-            -NotAfter (Get-Date).AddYears(10) `
-            -Signer $3kMockPKCert `
-            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=0&pathlength=0")
-            #-KeySpec KeyExchange
-
-$3kMockKEKCert = $CertificateStore + $Output.Thumbprint
-Export-Certificate -Cert $3kMockKEKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $3kMockKEKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
-
-# Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
-if ($LASTEXITCODE -ne 0) {
-    Exit
-}
-
-# Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
-if ($LASTEXITCODE -ne 0) {
+$3KMockKEK = GenerateCertificate $KeyLength $CommonName $VariableName $VariablePrefix $3KMockPK.Cert
+$ret = GenerateTestData $VariableName $VariablePrefix $CommonName $3KMockKEK.CertPath
+if (!$ret) {
     Exit
 }
 
@@ -410,56 +282,16 @@ if ($LASTEXITCODE -ne 0) {
 $CommonName= "3k Mock Leaf Certficate"
 $VariableName = "MockLeaf"
 
-$PfxCertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.pfx"
-$CertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.cer"
-$TestDataPath = Join-Path -Path $TestDataFolder -ChildPath "$VariableName.bin"
-$EmptyTestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}Empty.bin"
-
-New-Item -Name $EmptyTestDataPath -ItemType File
-"$VariableDataFormat $CommonName" | Out-File -Encoding Ascii -FilePath $TestDataPath
-
-$Output = New-SelfSignedCertificate `
-            -DnsName "www.$Organization.com" `
-            -CertStoreLocation $CertificateStore `
-            -KeyAlgorithm RSA `
-            -KeyLength $KeyLength `
-            -Subject "CN=$CommonName O=$Organization" `
-            -NotAfter (Get-Date).AddYears(10) `
-            -Signer $3kMockKEKCert `
-            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=0&pathlength=0")
-
-$3kMockLeafCert = $CertificateStore + $Output.Thumbprint
-Export-Certificate -Cert $3kMockLeafCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $3kMockLeafCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
-
-# Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
-if ($LASTEXITCODE -ne 0) {
-    Exit
-}
-
-# Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
-if ($LASTEXITCODE -ne 0) {
+$3KMockLC = GenerateCertificate $KeyLength $CommonName $VariableName $VariablePrefix $3KMockKEK.Cert
+$ret = GenerateTestData $VariableName $VariablePrefix $CommonName $3KMockLC.CertPath
+if (!$ret) {
     Exit
 }
 
 # =============================================================================
 # Clean up and move the files to their final destination
 # =============================================================================
-
-
-$DestinationFolder = Join-Path -Path $OutputFolder -ChildPath "${VariablePrefix}${TestDataName}"
-New-Item -Path $DestinationFolder -ItemType Directory
-
-$OutputCertPath = Join-Path -Path $DestinationFolder -ChildPath "$CertName"
-$OutputTestDataPath = Join-Path -Path $DestinationFolder -ChildPath "$TestDataName"
-New-Item -Path $OutputCertPath -ItemType Directory
-New-Item -Path $OutputTestDataPath -ItemType Directory
-
-Get-ChildItem -Path $CertificateFolder -Recurse -File | Move-Item -Destination $OutputCertPath
-Get-ChildItem -Path $TestDataFolder -Recurse -File | Move-Item -Destination $OutputTestDataPath
-
+CopyDataToFinalDestination $VariablePrefix
 
 # =============================================================================
 # 4k Keys
@@ -473,38 +305,9 @@ $VariablePrefix = "m4k"
 $CommonName= "4k Mock Platform Key"
 $VariableName = "MockPK"
 
-$PfxCertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.pfx"
-$CertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.cer"
-$TestDataPath = Join-Path -Path $TestDataFolder -ChildPath "$VariableName.bin"
-$EmptyTestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}Empty.bin"
-
-New-Item -Name $EmptyTestDataPath -ItemType File
-"$VariableDataFormat $CommonName" | Out-File -Encoding Ascii -FilePath $TestDataPath
-
-$Output = New-SelfSignedCertificate `
-            -DnsName "www.$Organization.com" `
-            -CertStoreLocation $CertificateStore `
-            -KeyAlgorithm RSA `
-            -KeyLength $KeyLength `
-            -Subject "CN=$CommonName O=$Organization" `
-            -NotAfter (Get-Date).AddYears(10) `
-            -KeyUsage CertSign,CRLSign,DigitalSignature `
-            -Signer $3kMockPKCert `
-            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=1")
-
-$4kMockPKCert = $CertificateStore + $Output.Thumbprint
-Export-Certificate -Cert $4kMockPKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $4kMockPKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
-
-# Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
-if ($LASTEXITCODE -ne 0) {
-    Exit
-}
-
-# Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
-if ($LASTEXITCODE -ne 0) {
+$4KMockPK = GenerateCertificate $KeyLength $CommonName $VariableName $VariablePrefix $3KMockPK.Cert
+$ret = GenerateTestData $VariableName $VariablePrefix $CommonName $4KMockPK.CertPath
+if (!$ret) {
     Exit
 }
 
@@ -514,41 +317,11 @@ if ($LASTEXITCODE -ne 0) {
 $CommonName= "4k Mock Key Exchange Key"
 $VariableName = "MockKEK"
 
-$PfxCertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.pfx"
-$CertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.cer"
-$TestDataPath = Join-Path -Path $TestDataFolder -ChildPath "$VariableName.bin"
-$EmptyTestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}Empty.bin"
-
-New-Item -Name $EmptyTestDataPath -ItemType File
-"$VariableDataFormat $CommonName" | Out-File -Encoding Ascii -FilePath $TestDataPath
-
-$Output = New-SelfSignedCertificate `
-            -DnsName "www.$Organization.com" `
-            -CertStoreLocation $CertificateStore `
-            -KeyAlgorithm RSA `
-            -KeyLength $KeyLength `
-            -Subject "CN=$CommonName O=$Organization" `
-            -NotAfter (Get-Date).AddYears(10) `
-            -Signer $4kMockPKCert `
-            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=0&pathlength=0")
-            #-KeySpec KeyExchange
-
-$4kMockKEKCert = $CertificateStore + $Output.Thumbprint
-Export-Certificate -Cert $4kMockKEKCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $4kMockKEKCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
-
-# Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
-if ($LASTEXITCODE -ne 0) {
+$4KMockKEK = GenerateCertificate $KeyLength $CommonName $VariableName $VariablePrefix $4KMockPK.Cert
+$ret = GenerateTestData $VariableName $VariablePrefix $CommonName $4KMockKEK.CertPath
+if (!$ret) {
     Exit
 }
-
-# Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
-if ($LASTEXITCODE -ne 0) {
-    Exit
-}
-
 
 # =============================================================================
 # Generates a Leaf Certificate signed by the Mock KEK
@@ -556,85 +329,48 @@ if ($LASTEXITCODE -ne 0) {
 $CommonName= "4k Mock Leaf Certficate"
 $VariableName = "MockLeaf"
 
-$PfxCertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.pfx"
-$CertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.cer"
-$TestDataPath = Join-Path -Path $TestDataFolder -ChildPath "$VariableName.bin"
-$EmptyTestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}Empty.bin"
-
-New-Item -Name $EmptyTestDataPath -ItemType File
-"$VariableDataFormat $CommonName" | Out-File -Encoding Ascii -FilePath $TestDataPath
-
-$Output = New-SelfSignedCertificate `
-            -DnsName "www.$Organization.com" `
-            -CertStoreLocation $CertificateStore `
-            -KeyAlgorithm RSA `
-            -KeyLength $KeyLength `
-            -Subject "CN=$CommonName O=$Organization" `
-            -NotAfter (Get-Date).AddYears(10) `
-            -Signer $4kMockKEKCert `
-            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=0&pathlength=0")
-
-$4kMockLeafCert = $CertificateStore + $Output.Thumbprint
-Export-Certificate -Cert $4kMockLeafCert -FilePath  $CertFilePath
-Export-PfxCertificate -Cert $4kMockLeafCert -FilePath $PfxCertFilePath -Password $SecureCertificatePassword
-
-# Generate the data authenticated variable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $TestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}"
-if ($LASTEXITCODE -ne 0) {
+$4KMockLC = GenerateCertificate $KeyLength $CommonName $VariableName $VariablePrefix $4KMockKEK.Cert
+$ret = GenerateTestData $VariableName $VariablePrefix $CommonName $4KMockLC.CertPath
+if (!$ret) {
     Exit
 }
-
-# Generate the empty authenticated vatriable
-python FormatAuthenticatedVariable.py $VariableName $VariableGuid $Attributes $EmptyTestDataPath $PfxCertFilePath --cert-password $CertificatePassword --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
-if ($LASTEXITCODE -ne 0) {
-    Exit
-}
-
 
 # =============================================================================
 # Clean up and move the files to their final destination
 # =============================================================================
-
-
-$DestinationFolder = Join-Path -Path $OutputFolder -ChildPath "${VariablePrefix}${TestDataName}"
-New-Item -Path $DestinationFolder -ItemType Directory
-
-$OutputCertPath = Join-Path -Path $DestinationFolder -ChildPath "$CertName"
-$OutputTestDataPath = Join-Path -Path $DestinationFolder -ChildPath "$TestDataName"
-New-Item -Path $OutputCertPath -ItemType Directory
-New-Item -Path $OutputTestDataPath -ItemType Directory
-
-Get-ChildItem -Path $CertificateFolder -Recurse -File | Move-Item -Destination $OutputCertPath
-Get-ChildItem -Path $TestDataFolder -Recurse -File | Move-Item -Destination $OutputTestDataPath
-
+CopyDataToFinalDestination $VariablePrefix
 
 # =============================================================================
 # delete the certs from the keystore
 # =============================================================================
 
-del $2kMockPKCert
-del $2kMockKEKCert 
-del $2kMockLeafCert
+# Locate by organization and delete
+$Organization = $Globals.Certificate.Organization
+$items = Get-ChildItem -Path $Globals.Certificate.Store -Recurse
+foreach ($item in $items) {
+     if($item.Subject -like "*$Organization*") {
+         $item | Remove-Item -Force
+     }
+}
 
-del $3kMockPKCert
-del $3kMockKEKCert
-del $3kMockLeafCert
+Remove-Item $Globals.Layout.CertificateFolder -Recurse -Force -Confirm:$false
+Remove-Item $Globals.Layout.TestDataFolder -Recurse -Force -Confirm:$false
 
-del $4kMockPKCert
-del $4kMockKEKCert
-del $4kMockLeafCert
+# =============================================================================
+# Copy All the C arrays and variables to their respective header and source file
+# =============================================================================
 
-$OutFile = Join-Path -Path $OutputFolder -ChildPath "Exported.c"
+$OutFile = Join-Path -Path $Globals.Layout.DataFolder -ChildPath "Exported.c"
 
-Get-ChildItem $OutputFolder -Filter '*.c' -Recurse `
+Get-ChildItem $Globals.Layout.DataFolder -Filter '*.c' -Recurse `
  | Where {$_.Name.substring($_.Name.length -3, 3)  -Match 'c'} `
  | Foreach-Object {
     cat $_.FullName | Add-Content -Path $OutFile 
 }
 
-$OutFile = Join-Path -Path $OutputFolder -ChildPath "Exported.h"
+$OutFile = Join-Path -Path $Globals.Layout.DataFolder -ChildPath "Exported.h"
 
-Get-ChildItem $OutputFolder -Filter '*.h' -Recurse `
+Get-ChildItem $Globals.Layout.DataFolder -Filter '*.h' -Recurse `
  | Where {$_.Name.substring($_.Name.length -3, 3)  -Match 'h'} `
  | Foreach-Object {
     cat $_.FullName | Add-Content -Path $OutFile 
