@@ -1,28 +1,45 @@
 #Requires -RunAsAdministrator
 # This script *unfortunately* requires ADMIN privileges due to New-SelfSignedCertificate
 
-# Windows Certificate Location
-$CertificateStore = "Cert:\LocalMachine\My\"
+# Remove all generated certificates that are left over
+$items = Get-ChildItem -Path Cert:\LocalMachine\My\ -Recurse
+foreach ($item in $items) {
+     if($item.Subject -like "*contoso*") {
+         $item | Remove-Item -Force
+     }
+}
 
-# Fordure Structure Layout
+$FormatAuthVar = "./FormatAuthenticatedVariable.py"
+
+# Have to leave this outside the globals - since it's inaccessible during construction of the hashtable
+$Password = "password"
+
+# Global Variables used throughout the script
+$Globals = @{
+    # Windows Certificate Location
+    Certificate = @{
+        Store = "Cert:\LocalMachine\My\"
+        Organization = "contoso"
+        Password = $Password
+        SecurePassword = ConvertTo-SecureString $Password -Force -AsPlainText
+        LifeYears = 10 # How long in the future should the Certificate be valid
+    }
+    Variable = @{
+        Attributes = "NV,BS,RT,AT"
+        Guid = "b3f4fb27-f382-4484-9b77-226b2b4348bb"
+        Format = "Hello "
+    }
+}
+
+
+# Folder Structure Layout
 $DataFolder = "./Data"
 $CertName = "Certs"
 $CertificateFolder = "$DataFolder/$CertName"
 $TestDataName = "TestData"
 $TestDataFolder = "$DataFolder/$TestDataName"
-$Organization = "contoso"
 
 $OutputFolder = "./Output"
-
-
-# Certificate Password
-$CertificatePassword = "password"
-$SecureCertificatePassword = ConvertTo-SecureString $CertificatePassword -Force -AsPlainText
-
-# UEFI Variable shared data
-$Attributes = "NV,BS,RT,AT"
-$VariableGuid = "b3f4fb27-f382-4484-9b77-226b2b4348bb"
-$VariableDataFormat = "Hello " # The name of the cert will be appended on
 
 # Clean up from a pervious run
 Remove-Item $DataFolder -Recurse -Force -Confirm:$false
@@ -32,6 +49,126 @@ New-Item -Path $TestDataFolder -ItemType Directory
 
 Remove-Item $OutputFolder -Recurse -Force -Confirm:$false
 New-Item -Path $OutputFolder -ItemType Directory
+
+
+function GenerateCertificate {
+    <#
+    This function generates a certificate used for mock testing
+    #>
+
+    param (
+        $KeyLength,
+        $CommonName,
+        $VariableName,
+        $VariablePrefix,
+        $Signer
+    )
+    
+    # Return object on success
+    $PfxCertFilePath = Join-Path -Path $CertificateFolder -ChildPath "$VariableName.pfx"
+
+    # Text Extensions:
+    # Code Signing: 2.5.29.37={text}1.3.6.1.5.5.7.3.3
+    # Constraint: 2.5.29.19={text}CA=0 (NOT CA) 2.5.29.19={text}CA=1 (CA)
+    # Pathlength: pathlength=16 
+    #       Arbitrarily long path length, essentially this the length of valid intermediate CA's before an End Entity
+    #       so CA -> 1 ... 2  -> EE - Valid
+    #          CA -> 1 ... 16 -> EE - Valid
+    #          CA -> 1 ... 17 -> EE - Invalid
+    #       A pathlength set too short will not be valid when checked by a validity engine
+
+    # Set the options that are required for signing
+    $SignedCertificateParams = @{
+        DnsName = "www.${Globals.Certificate.Organization}.com"
+        CertStoreLocation = $Globals.Certificate.Store
+        KeyAlgorithm = "RSA"
+        KeyLength = $KeyLength
+        Subject = "CN=$CommonName O=${Globals.Certificate.Organization}"
+        NotAfter = (Get-Date).AddYears($Globals.Certificate.LifeYears)
+        TextExtension = @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=0&pathlength=16")
+    }
+
+    if (!$Signer) {
+        # If there is no signer, than this is to be treated as a Self Signed CA
+        $SignedCertificateParams.TextExtension = @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}CA=1")
+        $SignedCertificateParams.KeyUsage = @("CertSign", "CRLSign", "DigitalSignature")
+    }
+
+    # Generate the new certifcate with the chosen params
+    $Output = New-SelfSignedCertificate @SignedCertificateParams
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+
+    # The path of the certificate in the store
+    $MockCert = $Globals.Certificate.Store + $Output.Thumbprint
+    
+    # export the cetificate as a PFX
+    Export-PfxCertificate -Cert $MockCert -FilePath $PfxCertFilePath -Password $Globals.Certificate.SecurePassword
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }  
+
+    return $PfxCertFilePath
+}
+
+function GenerateTestData {
+    param (
+        [String]$VariableName,
+        [String]$VariablePrefix,
+        [String]$CommonName,
+        $PfxCertFilePath
+    )
+
+
+    $TestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}.bin"
+    $EmptyTestDataPath = Join-Path -Path $TestDataFolder -ChildPath "${VariableName}Empty.bin"
+
+    # Create the empty file
+    New-Item -Name ${EmptyTestDataPath} -ItemType File
+    if ($LASTEXITCODE -ne 0) {
+        return $false
+    }
+
+    # Create the File with test data that is unique to the variable signing it
+    "${Variable.Format} $CommonName" | Out-File -Encoding Ascii -FilePath ${TestDataPath}
+    if ($LASTEXITCODE -ne 0) {
+        return $false
+    }
+
+    Write-Host ">>>> $PfxCertFilePath "  $PfxCertFilePath.GetType()
+    Write-Host ($PfxCertFilePath | Format-List | Out-String)
+
+    # Generate the data authenticated variable
+    python $FormatAuthVar $VariableName $Globals.Variable.Guid $Globals.Variable.Attributes $TestDataPath `
+        $PfxCertFilePath --cert-password $Globals.Certificate.Password --export-c-array --c-name "${VariablePrefix}${VariableName}"
+    if ($LASTEXITCODE -ne 0) {
+        return $false
+    }
+
+    # Generate the empty authenticated vatriable
+    python $FormatAuthVar $VariableName $Globals.Variable.Guid $Globals.Variable.Attributes $EmptyTestDataPath `
+        $PfxCertFilePath --cert-password $Globals.Certificate.Password --export-c-array --c-name "${VariablePrefix}${VariableName}Delete"
+    if ($LASTEXITCODE -ne 0) {
+        return $false
+    }
+
+    return $true
+}
+
+
+$CertFilePath = GenerateCertificate 2048 "2k MockPlatformKey" "MockPK" $null
+$CertFilePath = $CertFilePath.value
+#Write-Host ">>>>>>> " $CertFilePath $CertFilePath.GetType()
+#Write-Host ($CertFilePath | Format-List | Out-String)
+Write-Host $CertFilePath
+#$ret = GenerateTestData "MockPK" "m2k" "2k Mock Platform Key" $CertFilePath
+
+
+# Uncomment if you need a cert - this will not keep the entire certificate chain - only the selected certificate
+# Export-Certificate -Cert $MockPKCert -FilePath  $CertFilePath
+
+Exit
 
 # =============================================================================
 # 2k Keys

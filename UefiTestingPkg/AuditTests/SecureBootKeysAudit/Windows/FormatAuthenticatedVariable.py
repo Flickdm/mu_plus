@@ -113,7 +113,7 @@ def parse_args():
     parser.add_argument(
         "data_file", help="Binary file of variable data. An empty file is accepted and will be used to cle ar the authenticated data")
     parser.add_argument("certificate",
-                        help="Certificate to sign the authenticated data with (Accepted: .pfx, .cer")
+                        help="Certificate to sign the authenticated data with (Accepted: .pfx)")
     parser.add_argument(
         "--cert-password", help="certificate password")
     parser.add_argument("--export-c-array", action="store_true",
