@@ -1,7 +1,10 @@
 #Requires -RunAsAdministrator
 # This script *unfortunately* requires ADMIN privileges due to New-SelfSignedCertificate
 
-# This script relies on this script to format and sign Authenticated Variables
+# Clear LASTEXITCODE
+$LASTEXITCODE = 0
+
+# This script relies on this script to format and sign Authenticated
 $FormatAuthVar = "./FormatAuthenticatedVariable.py"
 
 # Have to leave this outside the globals - since it's inaccessible during initialization of the hashtable
@@ -101,6 +104,8 @@ function GenerateCertificate {
     # Generate the new certifcate with the chosen params
     $Output = New-SelfSignedCertificate @SignedCertificateParams
     if ($LASTEXITCODE -ne 0) {
+        write-host $Output
+        Write-Host "New-SelfSignedCertificate Failed"
         return $null
     }
 
@@ -110,6 +115,7 @@ function GenerateCertificate {
     # export the cetificate as a PFX
     Export-PfxCertificate -Cert $MockCert -FilePath $PfxCertFilePath -Password $Globals.Certificate.SecurePassword | Out-Null
     if ($LASTEXITCODE -ne 0) {
+        Write-Host "Export-PfxCertificate Failed"
         return $null
     }
 
