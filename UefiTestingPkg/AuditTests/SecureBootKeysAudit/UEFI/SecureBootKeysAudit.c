@@ -19,10 +19,17 @@
 #define UNIT_TEST_NAME     "Secure Boot Keys Audit Test"
 #define UNIT_TEST_VERSION  "0.1"
 
+#define AUTH_WRITE_ATTR (EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_RUNTIME_ACCESS | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS)
+
 #define MOCK_PLATFORM_KEY_INDEX      (0)
 #define MOCK_KEY_EXCHANGE_KEY_INDEX  (1)
 #define MOCK_LEAF_CERTIFICATE_INDEX  (2)
 #define CHAIN_LENGTH                 (3)
+
+/// Plan
+/// Does firmware support 2k (Baseline), 3k, 4k,
+/// Does firmware support 
+ 
 
 typedef struct {
   CHAR16    *Variable;         // Name of the UEFI Variable
@@ -43,14 +50,11 @@ typedef struct {
 
 // UEFI variables must have the same name, guid, and attributes to be accepted
 
+/
 STATIC BASIC_INSTALL_CHAIN_CONTEXT  m2kInstall = {
   .TestName                       = L"Basic Install Chain",
   .Chain[MOCK_PLATFORM_KEY_INDEX] =  {
     .Variable   = L"MockPK",
-    .Attributes =  EFI_VARIABLE_NON_VOLATILE
-                  | EFI_VARIABLE_RUNTIME_ACCESS
-                  | EFI_VARIABLE_BOOTSERVICE_ACCESS
-                  | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS,
     .Data          = NULL, // Not known at compile time
     .DataSize      = 0,    // Not known at compile time
     .ClearData     = NULL, // Not known at compile time
@@ -58,10 +62,6 @@ STATIC BASIC_INSTALL_CHAIN_CONTEXT  m2kInstall = {
   },
   .Chain[MOCK_KEY_EXCHANGE_KEY_INDEX] =  {
     .Variable   = L"MockKEK",
-    .Attributes =  EFI_VARIABLE_NON_VOLATILE
-                  | EFI_VARIABLE_RUNTIME_ACCESS
-                  | EFI_VARIABLE_BOOTSERVICE_ACCESS
-                  | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS,
     .Data          = NULL, // Not known at compile time
     .DataSize      = 0,    // Not known at compile time
     .ClearData     = NULL, // Not known at compile time
@@ -69,10 +69,6 @@ STATIC BASIC_INSTALL_CHAIN_CONTEXT  m2kInstall = {
   },
   .Chain[MOCK_LEAF_CERTIFICATE_INDEX] =  {
     .Variable   = L"MockLeaf",
-    .Attributes =  EFI_VARIABLE_NON_VOLATILE
-                  | EFI_VARIABLE_RUNTIME_ACCESS
-                  | EFI_VARIABLE_BOOTSERVICE_ACCESS
-                  | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS,
     .Data          = NULL, // Not known at compile time
     .DataSize      = 0,    // Not known at compile time
     .ClearData     = NULL, // Not known at compile time
@@ -86,10 +82,6 @@ STATIC BASIC_INSTALL_CHAIN_CONTEXT  m3kInstall = {
   .TestName                       = L"3k Install Chain",
   .Chain[MOCK_PLATFORM_KEY_INDEX] =  {
     .Variable   = L"MockPK",
-    .Attributes =  EFI_VARIABLE_NON_VOLATILE
-                  | EFI_VARIABLE_RUNTIME_ACCESS
-                  | EFI_VARIABLE_BOOTSERVICE_ACCESS
-                  | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS,
     .Data          = NULL, // Not known at compile time
     .DataSize      = 0,    // Not known at compile time
     .ClearData     = NULL, // Not known at compile time
@@ -97,10 +89,6 @@ STATIC BASIC_INSTALL_CHAIN_CONTEXT  m3kInstall = {
   },
   .Chain[MOCK_KEY_EXCHANGE_KEY_INDEX] =  {
     .Variable   = L"MockKEK",
-    .Attributes =  EFI_VARIABLE_NON_VOLATILE
-                  | EFI_VARIABLE_RUNTIME_ACCESS
-                  | EFI_VARIABLE_BOOTSERVICE_ACCESS
-                  | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS,
     .Data          = NULL, // Not known at compile time
     .DataSize      = 0,    // Not known at compile time
     .ClearData     = NULL, // Not known at compile time
@@ -108,10 +96,6 @@ STATIC BASIC_INSTALL_CHAIN_CONTEXT  m3kInstall = {
   },
   .Chain[MOCK_LEAF_CERTIFICATE_INDEX] =  {
     .Variable   = L"MockLeaf",
-    .Attributes =  EFI_VARIABLE_NON_VOLATILE
-                  | EFI_VARIABLE_RUNTIME_ACCESS
-                  | EFI_VARIABLE_BOOTSERVICE_ACCESS
-                  | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS,
     .Data          = NULL, // Not known at compile time
     .DataSize      = 0,    // Not known at compile time
     .ClearData     = NULL, // Not known at compile time
@@ -125,10 +109,6 @@ STATIC BASIC_INSTALL_CHAIN_CONTEXT  m4kInstall = {
   .TestName                       = L"4k Install Chain",
   .Chain[MOCK_PLATFORM_KEY_INDEX] =  {
     .Variable   = L"MockPK",
-    .Attributes =  EFI_VARIABLE_NON_VOLATILE
-                  | EFI_VARIABLE_RUNTIME_ACCESS
-                  | EFI_VARIABLE_BOOTSERVICE_ACCESS
-                  | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS,
     .Data          = NULL, // Not known at compile time
     .DataSize      = 0,    // Not known at compile time
     .ClearData     = NULL, // Not known at compile time
@@ -136,10 +116,6 @@ STATIC BASIC_INSTALL_CHAIN_CONTEXT  m4kInstall = {
   },
   .Chain[MOCK_KEY_EXCHANGE_KEY_INDEX] =  {
     .Variable   = L"MockKEK",
-    .Attributes =  EFI_VARIABLE_NON_VOLATILE
-                  | EFI_VARIABLE_RUNTIME_ACCESS
-                  | EFI_VARIABLE_BOOTSERVICE_ACCESS
-                  | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS,
     .Data          = NULL, // Not known at compile time
     .DataSize      = 0,    // Not known at compile time
     .ClearData     = NULL, // Not known at compile time
@@ -147,10 +123,6 @@ STATIC BASIC_INSTALL_CHAIN_CONTEXT  m4kInstall = {
   },
   .Chain[MOCK_LEAF_CERTIFICATE_INDEX] =  {
     .Variable   = L"MockLeaf",
-    .Attributes =  EFI_VARIABLE_NON_VOLATILE
-                  | EFI_VARIABLE_RUNTIME_ACCESS
-                  | EFI_VARIABLE_BOOTSERVICE_ACCESS
-                  | EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS,
     .Data          = NULL, // Not known at compile time
     .DataSize      = 0,    // Not known at compile time
     .ClearData     = NULL, // Not known at compile time
@@ -158,6 +130,51 @@ STATIC BASIC_INSTALL_CHAIN_CONTEXT  m4kInstall = {
   },
   .ChainLength     = CHAIN_LENGTH,
   .ExpectedStatus1 = UNIT_TEST_PASSED
+};
+
+STATIC BASIC_INSTALL_CHAIN_CONTEXT  mPKChain = {
+  .TestName = L"Variable Size PK Chain",
+  .Chain[0] =  { // 2K
+    .Variable   = L"MockPK",
+    .Data          = NULL, // Not known at compile time
+    .DataSize      = 0,    // Not known at compile time
+    .ClearData     = NULL, // Not known at compile time
+    .ClearDataSize = 0     // Not known at compile time
+  },
+  .Chain[1] =  { // 3K
+    .Variable   = L"MockPK",
+    .Data          = NULL, // Not known at compile time
+    .DataSize      = 0,    // Not known at compile time
+    .ClearData     = NULL, // Not known at compile time
+    .ClearDataSize = 0     // Not known at compile time
+  },
+  .Chain[2] =  { // 4K
+    .Variable   = L"MockPK",
+    .Data          = NULL, // Not known at compile time
+    .DataSize      = 0,    // Not known at compile time
+    .ClearData     = NULL, // Not known at compile time
+    .ClearDataSize = 0     // Not known at compile time
+  },
+  .ChainLength     = 3,
+};
+
+STATIC BASIC_INSTALL_CHAIN_CONTEXT  mPKChainSkip = {
+  .TestName = L"Variable Size PK Chain Skip",
+  .Chain[0] =  { // 2K
+    .Variable   = L"MockPK",
+    .Data          = NULL, // Not known at compile time
+    .DataSize      = 0,    // Not known at compile time
+    .ClearData     = NULL, // Not known at compile time
+    .ClearDataSize = 0     // Not known at compile time
+  },
+  .Chain[2] =  { // 4K
+    .Variable   = L"MockPK",
+    .Data          = NULL, // Not known at compile time
+    .DataSize      = 0,    // Not known at compile time
+    .ClearData     = NULL, // Not known at compile time
+    .ClearDataSize = 0     // Not known at compile time
+  },
+  .ChainLength     = 2,
 };
 
 static
@@ -184,6 +201,8 @@ InstallMockChain (
   // Grab the context for installing the variable
   Btc = (BASIC_INSTALL_CHAIN_CONTEXT *)Context;
 
+  DEBUG ((DEBUG_INFO, "TESTING %s\n", Btc->TestName));
+
   // ----- For each key in the chain loop over and verify that we can set and clear them ----- //
   for (UINTN i = 0; i < Btc->ChainLength; i++) {
     Var = Btc->Chain[i];
@@ -192,7 +211,7 @@ InstallMockChain (
     Status = gRT->SetVariable (
                                Var.Variable,
                                &gUefiTestingPkgTokenSpaceGuid,
-                               Var.Attributes,
+                               AUTH_WRITE_ATTR,
                                Var.DataSize,
                                Var.Data
                                );
@@ -213,7 +232,7 @@ InstallMockChain (
                                );
 
     // ----- The Attributes returned should match the attributes set ----- //
-    if (Attributes != Var.Attributes) {
+    if (Attributes != AUTH_WRITE_ATTR) {
       DEBUG ((DEBUG_ERROR, "GetVariable of \"%s\" in test \"%s\" failed. Attributes incorrect (%u), Return code %r\n", Var.Variable, Btc->TestName, Attributes, Status));
       goto Exit;
     }
@@ -250,7 +269,7 @@ InstallMockChain (
     Status = gRT->SetVariable (
                                Var.Variable,
                                &gUefiTestingPkgTokenSpaceGuid,
-                               Var.Attributes,
+                               AUTH_WRITE_ATTR,
                                Var.ClearDataSize,
                                Var.ClearData
                                );
@@ -332,6 +351,7 @@ SetupVariableChain (
   m4kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].DataSize      = m4kMockLeafSize;
   m4kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearData     = m4kMockLeafDelete;
   m4kInstall.Chain[MOCK_LEAF_CERTIFICATE_INDEX].ClearDataSize = m4kMockLeafDeleteSize;
+
 }
 
 /**
@@ -388,7 +408,7 @@ SecureBootKeysAuditMain (
     goto EXIT;
   }
 
-  SetupVariableChain();
+  SetupVariableChain ();
 
   // 1.1 Install the MockPK
   //    This will act as a platform Key for the rest of the Variables
@@ -396,6 +416,7 @@ SecureBootKeysAuditMain (
   AddTestCase (BaselineKeysTest, "2kKeysTest", "2kKeysTest", InstallMockChain, NULL, NULL, &m2kInstall);
   AddTestCase (BaselineKeysTest, "3kKeysTest", "3kKeysTest", InstallMockChain, NULL, NULL, &m3kInstall);
   AddTestCase (BaselineKeysTest, "4kKeysTest", "4kKeysTest", InstallMockChain, NULL, NULL, &m4kInstall);
+  //AddTestCase (BaselineKeysTest, "Skip", "Skip", InstallMockChain, NULL, NULL, &mPKChainSkip);
 
   //
   // Execute the tests.
