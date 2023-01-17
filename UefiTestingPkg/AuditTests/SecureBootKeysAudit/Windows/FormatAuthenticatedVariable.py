@@ -2,6 +2,9 @@
 
 """
  Imitates Format-SecureBootUefi and signs a variable in accordance with EFI_AUTHENTICATION_2
+https://github.com/pyasn1/pyasn1
+
+ https://security.stackexchange.com/questions/249610/what-is-the-pkcs7-detached-signature-format
 """
 
 import struct
@@ -12,14 +15,31 @@ import logging
 import sys
 import uuid
 import os
+import shutil
+
 
 from edk2toollib.utility_functions import DetachedSignWithSignTool
 
 import edk2toollib.uefi.uefi_multi_phase as UEFI_MULTI_PHASE
 import edk2toollib.windows.locate_tools as locate_tools
 
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.serialization import pkcs7
+from cryptography.hazmat.primitives.serialization import pkcs12
+
+#from pyasn1.codec.native.decoder import decode
+from pyasn1.codec.der.decoder import decode as der_decode
+from pyasn1.codec.der.encoder import encode as der_encode
+from pyasn1.codec.native.encoder import encode as nat_encode
+from pyasn1.codec.native.decoder import decode as nat_decode
+
+from pyasn1_modules import rfc2315
+# pyasn1
+# pyasn1_modules
+
+
 WIN_CERT_TYPE_EFI_GUID = 0x0ef1
-WIN_CERT_REVISION = 0x0200
+WIN_CERT_REVISION_2_0 = 0x0200
 EFI_CERT_TYPE_PKCS7_GUID = '4aafd29d-68df-49ee-8aa9-347d375665a7'
 
 ATTRIBUTE_MAP = {
@@ -29,7 +49,7 @@ ATTRIBUTE_MAP = {
     # Disabling the following two, because they are unsupported (by this script) and deprecated (in UEFI)
     # "HW": UEFI_MULTI_PHASE.EFI_VARIABLE_HARDWARE_ERROR_RECORD,
     # "AW": UEFI_MULTI_PHASE.EFI_VARIABLE_AUTHENTICATED_WRITE_ACCESS,
-    "AT": UEFI_MULTI_PHASE.EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS
+    "AT": UEFI_MULTI_PHASE.EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS,
 }
 
 TEMP_FOLDER = tempfile.gettempdir()
@@ -115,13 +135,15 @@ def parse_args():
     parser.add_argument("certificate",
                         help="Certificate to sign the authenticated data with (Accepted: .pfx)")
     parser.add_argument(
-        "--cert-password", help="certificate password")
+        "--cert-password", help="certificate password", default="password")
     parser.add_argument("--export-c-array", action="store_true",
                         default=False, help="Exports a given buffer as a C array")
     parser.add_argument(
         "--c-name", help="Override C variable name on export", default=None)
     parser.add_argument(
-        "--output-dir", help="Output directory for the signed data", default=None)
+        "--output-dir", help="Output directory for the signed data", default="./")
+    parser.add_argument(
+        "--additional-signers", nargs='*', help="chain the signing certificate to", default=[])
 
     args = parser.parse_args()
 
@@ -148,7 +170,191 @@ def parse_args():
     return args
 
 
-def create_authenticated_variable(tm, name, guid, attributes, data_file, c_name, certificate, cert_password, output_dir):
+def pkcs7_sign(buffer, pfx_file, password="password", additional_certificates=False, additional_signers=[]):
+    """
+    https://cryptography.io/en/latest/hazmat/primitives/asymmetric/serialization/#pkcs7
+    """
+    pkcs12_blob = b""
+    # read from the pfx file the pkcs12_blob
+    with open(pfx_file, 'rb') as f:
+        pkcs12_blob = f.read()
+
+    # Grab the certificate key, certificate, and the additional certificates (public keys)
+    pkcs12_store = pkcs12.load_pkcs12(pkcs12_blob, password.encode('utf-8'))
+
+    # Set the options for the pkcs7 signature:
+    #   - The signature is detached
+    #   - Do not convert LF to CRLF in the file (windows format)
+    #   - Remove the attributes section from the pkcs7 structure
+    options = [pkcs7.PKCS7Options.DetachedSignature,
+               pkcs7.PKCS7Options.Binary, pkcs7.PKCS7Options.NoAttributes]
+    
+    # Tbs Certificate
+    # https://www.rfc-editor.org/rfc/rfc5280#section-4.1
+
+    signature_builder = pkcs7.PKCS7SignatureBuilder()
+    signature_builder = signature_builder.set_data(buffer)
+
+    # TODO Adding mulitiple signers adds multiple tbsCertificates
+
+    logger.info("Signing with Certificate: ")
+    logger.info("\tIssuer: %s", pkcs12_store.cert.certificate.issuer)
+    logger.info("\tSubject: %s", pkcs12_store.cert.certificate.subject)
+    # add the signer certificate
+    signature_builder = signature_builder.add_signer(pkcs12_store.cert.certificate, pkcs12_store.key, hashes.SHA256())
+
+    if additional_certificates:
+        # add the additional certificates in the pfx file
+        for i, cert in enumerate(pkcs12_store.additional_certs):
+            tab_indent = i + 1
+            logger.info("")
+            logger.info("%sAdding Additional Certificate: ", tab_indent*'\t')
+            logger.info("%s\tIssuer: %s", tab_indent*'\t', cert.certificate.issuer)
+            logger.info("%s\tSubject: %s", tab_indent*'\t', cert.certificate.subject)
+            signature_builder = signature_builder.add_certificate(cert.certificate)
+            #signature_builder = signature_builder.add_signer(cert.certificate, pkcs12_store.key, hashes.SHA256())
+
+    for signer in additional_signers:
+        pkcs12_additional_signer_blob = b""
+        # read from the pfx file the pkcs12_blob
+        with open(signer, 'rb') as f:
+            pkcs12_additional_signer_blob = f.read()
+
+        # Grab the certificate key, certificate, and the additional certificates (public keys)
+        pkcs12_additional_signer_store = pkcs12.load_pkcs12(pkcs12_additional_signer_blob, password.encode('utf-8'))
+        logger.info("Signing with Certificate: ")
+        logger.info("\tIssuer: %s", pkcs12_additional_signer_store.cert.certificate.issuer)
+        logger.info("\tSubject: %s", pkcs12_additional_signer_store.cert.certificate.subject)
+        # add the signer certificate
+        signature_builder = signature_builder.add_signer(pkcs12_additional_signer_store.cert.certificate, pkcs12_additional_signer_store.key, hashes.SHA256())
+
+    # The signature is enclosed in a asn1 content info structure
+    signature = signature_builder.sign(serialization.Encoding.DER, options)
+
+    # lets decode the der encoded structure as an asn1Spec ContentInfo
+    content_info, _ = der_decode(signature, asn1Spec=rfc2315.ContentInfo())
+
+    # Check that this is a signed data structure (doesn't really matter)
+    content_type = content_info.getComponentByName('contentType')
+    if content_type != rfc2315.signedData:
+        raise Exception("This wasn't a signed data structure?")
+
+    # TODO I'm thought UEFI allowed for the signature to be in a ContentInfo Structure. Why do I have to remove it?
+    signed_data, _ = der_decode(content_info.getComponentByName('content'), asn1Spec=rfc2315.SignedData())
+
+    logger.debug(signed_data)
+
+    return der_encode(signed_data)
+
+
+# def SignData(buffer, certificate, password, trust_anchor=None):
+#    """
+#    Signs the data using
+#    """
+#    #  Write the buffer to a temporary location so we can hash it with signtool
+#    with open(DATA_BUFFER_FILE, 'wb') as f:
+#        f.write(buffer)
+
+    # Use signtool to produce a digest of the variable
+    # signtool sign /fd sha256 /p7ce DetachedSignedData /p7co 1.2.840.113549.1.7.2 /p7 "C:\\" /f "Cert.pfx" /p password /debug /v "data.bin"
+#    out = DetachedSignWithSignTool(signtoolpath,
+#                                   DATA_BUFFER_FILE,
+#                                   SIGNATURE_BUFFER_FILE,
+#                                   certificate,
+#                                   password,
+#                                   AutoSelect=True,
+#                                   AdditionalCertificate=trust_anchor)
+#    if out != 0:
+#        logger.error("Signtool Failed")
+#        return None
+
+#    signature = ""
+#    with open(SIGNATURE_BUFFER_FILE, 'rb') as f:
+#        signature = f.read()
+
+#    return signature
+
+
+class V2AuthenticatedVariable(object):
+
+    def __init__(self, decodefs=None):
+
+        # The signature buffer is what is is used for "signing the payload"
+        self.signature_buffer = None
+        self.variable_data = b""
+        self.efi_time = b""
+        self.signature = b""
+
+    def new(self, name, guid, attributes, tm=time.localtime(), variablefs=None):
+        """
+        :param variablefs: must be opened as 'rb'
+        """
+
+        self.efi_time = struct.pack(
+            EFI_TIME_FMT,
+            tm.tm_year,
+            tm.tm_mon,
+            tm.tm_mday,
+            tm.tm_hour,
+            tm.tm_min,
+            tm.tm_sec,
+            0,
+            0,
+            0,
+            0,
+            0)
+
+        # Generate the hash data to be digested
+        self.signature_buffer = name.encode('utf_16_le') + guid.bytes_le + \
+            struct.pack('<I', attributes) + self.efi_time
+
+        # Filestream may be empty (delete variable)
+        if variablefs:
+            self.variable_data = variablefs.read()
+
+        # Append the variable data to the buffer
+        self.signature_buffer += self.variable_data
+
+    def sign_payload(self, certificate, password, additional_signers=[]):
+        """
+        :param certificate: signing certificate
+        :param password: password for the signing certificate
+        """
+
+        if not self.signature_buffer:
+            logger.warning("Signature Buffer was empty")
+            return b""
+
+        self.signature = pkcs7_sign(self.signature_buffer, certificate, password, additional_signers=additional_signers)
+
+        return self.signature
+
+    def _deserialize(self, fs):
+        raise Exception("Not Implemented")
+
+    def serialize(self):
+        """
+        returns byte array of serialized buffer
+        """
+
+        if not self.signature:
+            logger.error("Can't serialize without a signature")
+            return b""
+
+        # Set the wincert and authinfo
+        wincert = struct.pack(WINCERT_FMT,
+                              WINCERT_FMT_SIZE + len(self.signature),
+                              WIN_CERT_REVISION_2_0,
+                              WIN_CERT_TYPE_EFI_GUID,
+                              uuid.UUID(EFI_CERT_TYPE_PKCS7_GUID).bytes_le)
+
+        return self.efi_time + wincert + self.signature + self.variable_data
+
+    def get_signature(self):
+        return self.signature
+
+
+def create_authenticated_variable_v2(tm, name, guid, attributes, data_file, certificate, cert_password, output_dir, additional_signers):
     """
     :param tm: Time object representing the time at which this variable was created
     :param name: UEFI variable name
@@ -161,91 +367,48 @@ def create_authenticated_variable(tm, name, guid, attributes, data_file, c_name,
     :param output_dir: directory to drop the signed authenticated variable data
     """
 
-    # 1. Create a descriptor
-    #   Create an EFI_VARIABLE_AUTHENTICATION_2 descriptor where:
-    #   • TimeStamp is set to the current time.
-    #   • AuthInfo.CertType is set to EFI_CERT_TYPE_PKCS7_GUID
+    v2_auth_var = V2AuthenticatedVariable()
 
-    # CertType will be set later
+    # TODO: V2 is the EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS and we should choose the correct variable based on that
+    # Create a new private authenticated variable
 
-    efi_time = struct.pack(
-        EFI_TIME_FMT,
-        tm.tm_year,
-        tm.tm_mon,
-        tm.tm_mday,
-        tm.tm_hour,
-        tm.tm_min,
-        tm.tm_sec,
-        0,
-        0,
-        0,
-        0,
-        0)
+    with open(data_file, 'rb') as f:
+        v2_auth_var.new(name, guid, attributes, tm=tm, variablefs=f)
 
-    # Generate the hash data to be digested
-    buffer = name.encode('utf_16_le') + guid.bytes_le + \
-        struct.pack('<I', attributes) + efi_time
+    signature = v2_auth_var.sign_payload(
+        certificate, cert_password, additional_signers)
+    if not signature:
+        logger.error("Signature Failed")
+        return
 
-    # Save off the variable data, we will need it later
-    variable_data = b""
-    if data_file:
-        with open(data_file, 'rb') as f:
-            variable_data = f.read()
+    serialized_variable = v2_auth_var.serialize()
+    if not serialized_variable:
+        logger.error("Invalid serialized variable")
+        return
 
-    data_file = os.path.join(os.path.split(data_file)[0], name)
-    if c_name:
-        data_file = os.path.join(os.path.split(data_file)[0], c_name)
+    output_file = data_file + ".signature"
+    if output_dir:
+        filename = os.path.split(output_file)[-1]
+        output_file = os.path.join(output_dir, filename)
 
-    buffer += variable_data
+    with open(output_file, 'wb') as f:
+        f.write(v2_auth_var.get_signature())
 
-    # Write the buffer to a temporary location so we can hash it with signtool
-    with open(DATA_BUFFER_FILE, 'wb') as f:
-        f.write(buffer)
+    # output_file = data_file + ".signature2"
+    # if output_dir:
+    #    filename = os.path.split(output_file)[-1]
+    #    output_file = os.path.join(output_dir, filename)
 
-    # 2. Hash the serialization of the values of the VariableName, VendorGuid and Attributes
-    # parameters of the SetVariable() call and the TimeStamp component of the
-    # EFI_VARIABLE_AUTHENTICATION_2 descriptor followed by the variable’s new value (i.e.
-    # the Data parameter’s new variable content). That is, digest = hash (VariableName, VendorGuid,
-    # Attributes, TimeStamp, DataNew_variable_content). The NULL character terminating the
-    # VariableName value shall not be included in the hash computation
-
-    # 3. Sign the resulting digest using a selected signature scheme (e.g. PKCS #1 v1.5
-
-    # 4. Construct a DER-encoded SignedData structure per PKCS#7 version 1.5 (RFC 2315), which shall
-    # be supported both with and without a DER-encoded ContentInfo structure per PKCS#7 version 1.5
-
-    # Use signtool to produce a digest of the variable
-    # signtool sign /fd sha256 /p7ce DetachedSignedData /p7co 1.2.840.113549.1.7.2 /p7 "C:\\" /f "Cert.pfx" /p password /debug /v "data.bin"
-    out = DetachedSignWithSignTool(signtoolpath, DATA_BUFFER_FILE,
-                                   SIGNATURE_BUFFER_FILE, certificate, cert_password, AutoSelect=True)
-    if out != 0:
-        logger.error("Signtool Failed")
-        return None
-
-    signature = ""
-    with open(SIGNATURE_BUFFER_FILE, 'rb') as f:
-        signature = f.read()
-
-    # Set the wincert and authinfo
-    wincert = struct.pack(WINCERT_FMT,
-                          WINCERT_FMT_SIZE + len(signature),
-                          WIN_CERT_REVISION,
-                          WIN_CERT_TYPE_EFI_GUID,
-                          uuid.UUID(EFI_CERT_TYPE_PKCS7_GUID).bytes_le)
+    # with open(output_file, 'wb') as f:
+    #    f.write(v2_auth_var.get_signature2())
 
     output_file = data_file + ".signed"
     if output_dir:
         filename = os.path.split(output_file)[-1]
         output_file = os.path.join(output_dir, filename)
 
-    # 5. Set AuthInfo.CertData to the DER-encoded PKCS #7 SignedData value.
-
-    # 6. Construct Data parameter: Construct the SetVariable()’s Data parameter by concatenating the
-    # complete, serialized EFI_VARIABLE_AUTHENTICATION_2 descriptor with the new value of the
-    # variable (DataNew_variable_content)
-
     with open(output_file, 'wb') as f:
-        f.write(efi_time + wincert + signature + variable_data)
+        f.write(serialized_variable)
 
     logger.info("Created %s", output_file)
 
@@ -258,16 +421,29 @@ def main():
     # Generate a  timestamp
     tm = time.localtime()
 
-    # def create_authenticated_variable(tm, name, guid, attributes, data_file, certificate, cert_password, output_dir):
+    output_dir = args.output_dir
+    if args.c_name:
+        output_dir = os.path.join(output_dir, args.c_name)
+        os.makedirs(output_dir, exist_ok=True)
 
-    output_file = create_authenticated_variable(
-        tm, args.name, args.guid, args.attributes_value, args.data_file, args.c_name, args.certificate,
-        args.cert_password, args.output_dir)
+    output_file = None
+
+    if 'AT' in args.attributes:
+        output_file = create_authenticated_variable_v2(
+            tm, args.name, args.guid, args.attributes_value, args.data_file, args.certificate,
+            args.cert_password, output_dir, args.additional_signers)
+
     if not output_file:
+        logger.error("Failed to create output file")
         sys.exit(1)
 
     if args.export_c_array:
-        export_c_array(output_file, args.output_dir, args.name, args.c_name, )
+        export_c_array(output_file, output_dir, args.name, args.c_name)
+
+    dest_data_file = os.path.split(args.data_file)[-1]
+    dest_data_file = os.path.join(output_dir, dest_data_file)
+    # Copy the original file
+    shutil.copy(args.data_file, dest_data_file)
 
     # Success
     sys.exit(0)
