@@ -62,7 +62,7 @@
   DeviceStateLib|MdeModulePkg/Library/DeviceStateLib/DeviceStateLib.inf
   DeviceBootManagerLib|MsCorePkg/Library/DeviceBootManagerLibNull/DeviceBootManagerLibNull.inf
 
-  MsBootManagerSettingsLib|PcBdsPkg/Library/MsBootManagerSettingsDxeLib/MsBootManagerSettingsDxeLib.inf
+  MsBootManagerSettingsLib|PcBdsPkg/Library/BootManagerSettingsDxeLibNull/BootManagerSettingsDxeLibNull.inf
   MsBootOptionsLib|PcBdsPkg/Library/MsBootOptionsLib/MsBootOptionsLib.inf
   MsBootPolicyLib|PcBdsPkg/Library/MsBootPolicyLibNull/MsBootPolicyLibNull.inf
   MsNetworkDependencyLib|PcBdsPkg/Library/MsNetworkDependencyLib/MsNetworkDependencyLib.inf
@@ -78,7 +78,7 @@
 
 [LibraryClasses.X64]
 
-!if $(TOOL_CHAIN_TAG) == VS2017 or $(TOOL_CHAIN_TAG) == VS2015 or $(TOOL_CHAIN_TAG) == VS2019 or $(TOOL_CHAIN_TAG) == VS2022
+!if $(TOOL_CHAIN_TAG) == VS2019 or $(TOOL_CHAIN_TAG) == VS2022
   # Provide StackCookie support lib so that we can link to /GS exports for VS builds
   NULL|MdePkg/Library/BaseBinSecurityLibRng/BaseBinSecurityLibRng.inf
   BaseBinSecurityLib|MdePkg/Library/BaseBinSecurityLibRng/BaseBinSecurityLibRng.inf
@@ -108,7 +108,7 @@
 #
 ###################################################################################################
 [Components]
-  PcBdsPkg/Library/MsBootManagerSettingsDxeLib/MsBootManagerSettingsDxeLib.inf
+  PcBdsPkg/Library/BootManagerSettingsDxeLibNull/BootManagerSettingsDxeLibNull.inf
   PcBdsPkg/Library/MsBootOptionsLib/MsBootOptionsLib.inf
   PcBdsPkg/Library/MsNetworkDelayLib/MsNetworkDelayLib.inf
   PcBdsPkg/Library/MsNetworkDependencyLib/MsNetworkDependencyLib.inf
@@ -125,8 +125,6 @@
   PcBdsPkg/Library/GraphicsConsoleHelperLibNull/GraphicsConsoleHelperLibNull.inf
 
 [Components.X64]
-  PcBdsPkg/Library/DeviceBootManagerLib/DeviceBootManagerLib.inf
-  PcBdsPkg/Library/UpdateFacsHardwareSignatureLib/UpdateFacsHardwareSignatureLib.inf
   PcBdsPkg/MsBootPolicy/MsBootPolicy.inf
   PcBdsPkg/ResetIfBootNextFailsDxe/ResetIfBootNextFailsDxe.inf
 
