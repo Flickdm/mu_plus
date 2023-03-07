@@ -1,0 +1,1 @@
+extern UINT8 m4096DigestAlgorithmsSupportMockVarEmpty[2184];

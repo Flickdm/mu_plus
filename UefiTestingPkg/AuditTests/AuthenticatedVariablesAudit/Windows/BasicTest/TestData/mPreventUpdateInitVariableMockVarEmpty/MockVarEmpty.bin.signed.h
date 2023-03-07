@@ -1,0 +1,1 @@
+extern UINT8 mPreventUpdateInitVariableMockVarEmpty[2130];
