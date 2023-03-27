@@ -470,7 +470,7 @@ class AuthenticatedVariable2(object):
 
         outputfs.write(str(signed_data))
 
-    def describe_variable(self, outputfs=sys.stdout):
+    def describe_variable(self, outputfs=sys.stdout, split_content=False):
         """
         :param outputfs: output stream to write to
 
@@ -484,7 +484,12 @@ class AuthenticatedVariable2(object):
         for line in variable_hexdump.split('\n'):
             outputfs.write(f"\t{line}\n")
 
-    def describe_all(self, outputfs=sys.stdout, bar_length=120):
+        if split_content:
+            logger.info("splitting content data")
+            with open('content.bin', 'wb') as f:
+                f.write(self.variable_data)
+
+    def describe_all(self, outputfs=sys.stdout, bar_length=120, split_content=False):
         """
         Describes all fields in the payload
 
@@ -500,7 +505,7 @@ class AuthenticatedVariable2(object):
         outputfs.write(f"\n{'='*bar_length}\n")
         self.describe_signature(outputfs=outputfs)
         outputfs.write(f"\n{'='*bar_length}\n")
-        self.describe_variable(outputfs=outputfs)
+        self.describe_variable(outputfs=outputfs, split_content=split_content)
 
     def get_signature(self):
         """
@@ -613,7 +618,7 @@ def describe_variable(args):
         auth_var = AuthenticatedVariable2(decodefs=f)
 
     with open(args.output, 'w') as f:
-        auth_var.describe_all(f)
+        auth_var.describe_all(f, split_content=args.split_content)
 
     logger.info(f"Output: {args.output}")
 
@@ -778,6 +783,12 @@ def setup_describe_parser(subparsers):
         "--output", default="./variable.describe",
         help="Output file to write the parse data to"
     )
+
+    describe_parser.add_argument(
+        "--split-content", default=False, action="store_true",
+        help="splits the content out into 'content.bin'"
+    )
+
 
     return subparsers
 
