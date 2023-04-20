@@ -100,7 +100,7 @@ $VariableData =  "Signed By SHA384 Certificate"
 # Variable Prefix must be different
 $VariablePrefix = "m${KeyLength}${TestGroup}"
 
-$EndEntityParams = GetEndEntityCertificateParams $KeyLength $CommonName "Signer SHA384" $IntermediateSHA384.Cert
+$EndEntityParams = GetEndEntityCertificateParams $KeyLength $CommonName "SignerSHA384" $IntermediateSHA384.Cert
 $EndEntityParams["HashAlgorithm"] = "SHA384"
 $Signer = GenerateCertificate $EndEntityParams $VariableName $VariablePrefix
 $ret = GenerateTestData $VariableName $VariablePrefix $VariableData @($Signer.CertInfo) $null @()
@@ -116,7 +116,7 @@ $VariableData =  "Signed By SHA512 Certificate"
 # Variable Prefix must be different
 $VariablePrefix = "m${KeyLength}${TestGroup}"
 
-$EndEntityParams = GetEndEntityCertificateParams $KeyLength $CommonName "Signer SHA512" $IntermediateSHA512.Cert
+$EndEntityParams = GetEndEntityCertificateParams $KeyLength $CommonName "SignerSHA512" $IntermediateSHA512.Cert
 $EndEntityParams["HashAlgorithm"] = "SHA512"
 $Signer = GenerateCertificate $EndEntityParams $VariableName $VariablePrefix
 $ret = GenerateTestData $VariableName $VariablePrefix $VariableData @($Signer.CertInfo) $null @()
@@ -267,89 +267,90 @@ if (!$ret) {
 # The above signing should work because they are signed by the same Intermediate Certificate
 # which is weird
 
-# =======================================================================================
-# Test Name: LargeCertificate
-# Test Description:
-#   This test checks to see when and how firmware will break if provided a certificate that's
-#   too large
-#
-#   Signers: 1 (End Entity)
-#   Additional Certificates: 0 (Only End Entity Certificate included)
-#
-#   Expectation: Fail
-# =============================================================================
-# MockVar Trust Anchor
-# =============================================================================
-$VariableName = "MockVar"
-$CommonName = "Large Certiciate Support"
-$TestGroup = "LargeCerticiateSupport"
-# =============================================================================
-$KeyLength = 4096 
-# Variable Prefix must be different
-$VariablePrefix = "m${TestGroup}RootCert"
-
-$RootCertParams = GetRootCertificateParams $KeyLength $CommonName "Root Certificate"
-$RootCert = GenerateCertificate $RootCertParams $VariableName $VariablePrefix
-
-# =============================================================================
-#  Generates signature signed by one 8k end entity certificate
-# 1 Additional Certficiate(s)
-# =============================================================================
-$KeyLength = 8196
-# Variable data *should* be different
-$VariableData =  "Signed By ${KeyLength} certificate"
-# Variable Prefix must be different
-$VariablePrefix = "m1${TestGroup}"
-
-$EndEntityParams = GetEndEntityCertificateParams $KeyLength $CommonName "Signer8196" $RootCert.Cert
-$Signer8196 = GenerateCertificate $EndEntityParams $VariableName $VariablePrefix
-$ret = GenerateTestData $VariableName $VariablePrefix $VariableData @($Signer8196.CertInfo) $null @()
-if (!$ret) {
-    Exit
-}
-
-# =============================================================================
-#  Generates signature signed by one 16k end entity certificate
-# =============================================================================
-$KeyLength = 16384
-# Variable data *should* be different
-$VariableData =  "Signed By ${KeyLength} certificate"
-# Variable Prefix must be different
-$VariablePrefix = "m1${TestGroup}"
-
-$EndEntityParams = GetEndEntityCertificateParams $KeyLength $CommonName "Signer16384" $RootCert.Cert
-$Signer16384 = GenerateCertificate $EndEntityParams $VariableName $VariablePrefix
-$ret = GenerateTestData $VariableName $VariablePrefix $VariableData @($Signer16384.CertInfo) $null @()
-if (!$ret) {
-    Exit
-}
-
-# =============================================================================
-#  Generates signature signed by one 16k end entity certificate
-# =============================================================================
-$KeyLength = 32768
-# Variable data *should* be different
-$VariableData =  "Signed By ${KeyLength} certificate"
-# Variable Prefix must be different
-$VariablePrefix = "m1${TestGroup}"
-
-$EndEntityParams = GetEndEntityCertificateParams $KeyLength $CommonName "Signer32768" $RootCert.Cert
-$Signer32768 = GenerateCertificate $EndEntityParams $VariableName $VariablePrefix
-$ret = GenerateTestData $VariableName $VariablePrefix $VariableData @($Signer32768.CertInfo) $null @()
-if (!$ret) {
-    Exit
-}
-
+# TODO: The tooling will not allow for a certificate larger than 4096 to be generated
+# # =======================================================================================
+# # Test Name: LargeCertificate
+# # Test Description:
+# #   This test checks to see when and how firmware will break if provided a certificate that's
+# #   too large
+# #
+# #   Signers: 1 (End Entity)
+# #   Additional Certificates: 0 (Only End Entity Certificate included)
+# #
+# #   Expectation: Fail
+# # =============================================================================
+# # MockVar Trust Anchor
+# # =============================================================================
+# $VariableName = "MockVar"
+# $CommonName = "Large Certiciate Support"
+# $TestGroup = "LargeCerticiateSupport"
+# # =============================================================================
+# $KeyLength = 4096 
+# # Variable Prefix must be different
+# $VariablePrefix = "m${TestGroup}RootCert"
+# 
+# $RootCertParams = GetRootCertificateParams $KeyLength $CommonName "Root Certificate"
+# $RootCert = GenerateCertificate $RootCertParams $VariableName $VariablePrefix
+# 
+# # =============================================================================
+# #  Generates signature signed by one 8k end entity certificate
+# # 1 Additional Certficiate(s)
+# # =============================================================================
+# $KeyLength = 8196
+# # Variable data *should* be different
+# $VariableData =  "Signed By ${KeyLength} certificate"
+# # Variable Prefix must be different
+# $VariablePrefix = "m1${TestGroup}"
+# 
+# $EndEntityParams = GetEndEntityCertificateParams $KeyLength $CommonName "Signer8196" $RootCert.Cert
+# $Signer8196 = GenerateCertificate $EndEntityParams $VariableName $VariablePrefix
+# $ret = GenerateTestData $VariableName $VariablePrefix $VariableData @($Signer8196.CertInfo) $null @()
+# if (!$ret) {
+#     Exit
+# }
+# 
+# # =============================================================================
+# #  Generates signature signed by one 16k end entity certificate
+# # =============================================================================
+# $KeyLength = 16384
+# # Variable data *should* be different
+# $VariableData =  "Signed By ${KeyLength} certificate"
+# # Variable Prefix must be different
+# $VariablePrefix = "m1${TestGroup}"
+# 
+# $EndEntityParams = GetEndEntityCertificateParams $KeyLength $CommonName "Signer16384" $RootCert.Cert
+# $Signer16384 = GenerateCertificate $EndEntityParams $VariableName $VariablePrefix
+# $ret = GenerateTestData $VariableName $VariablePrefix $VariableData @($Signer16384.CertInfo) $null @()
+# if (!$ret) {
+#     Exit
+# }
+# 
+# # =============================================================================
+# #  Generates signature signed by one 16k end entity certificate
+# # =============================================================================
+# $KeyLength = 32768
+# # Variable data *should* be different
+# $VariableData =  "Signed By ${KeyLength} certificate"
+# # Variable Prefix must be different
+# $VariablePrefix = "m1${TestGroup}"
+# 
+# $EndEntityParams = GetEndEntityCertificateParams $KeyLength $CommonName "Signer32768" $RootCert.Cert
+# $Signer32768 = GenerateCertificate $EndEntityParams $VariableName $VariablePrefix
+# $ret = GenerateTestData $VariableName $VariablePrefix $VariableData @($Signer32768.CertInfo) $null @()
+# if (!$ret) {
+#     Exit
+# }
+ 
 # =============================================================================
 # Copy All the C arrays and variables to a single header and source file
 # =============================================================================
 
 $OutFile = Join-Path -Path $Globals.Layout.DataFolder -ChildPath "Exported.c"
 
-#Include Headers
+# Include Headers
 $SourceContents = @()
 $SourceContents += "#include `"AuthData.h`"`n#include <Uefi.h>`n`n"
-
+ 
 Get-ChildItem $Globals.Layout.DataFolder -Filter '*.c' -Recurse `
  | sort creationtime `
  | Where {$_.Name.substring($_.Name.length -3, 3)  -Match 'c'} `

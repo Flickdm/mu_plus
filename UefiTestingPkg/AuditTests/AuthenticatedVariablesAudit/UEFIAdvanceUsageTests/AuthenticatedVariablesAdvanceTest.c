@@ -279,7 +279,7 @@ EFIAPI
 BasicUsage3VariablesTest (
   IN UNIT_TEST_CONTEXT  Context
   )
-{Ad
+{
   // UINT32              Attributes;
   BASIC_USAGE_3_SIGNATURES_TEST_CONTEXT  *BasicUsageContext;
   // UINTN               DataSize;
@@ -416,7 +416,6 @@ AuthenticatedVariablesBasicTestMain (
   UNIT_TEST_FRAMEWORK_HANDLE  Framework;
   // Baseline Test
   UNIT_TEST_SUITE_HANDLE  BasicUsageTest;
-
 
   Framework = NULL;
 

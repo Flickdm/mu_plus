@@ -200,14 +200,12 @@ def pkcs7_sign(buffer, signers: list, top_level_certificate_file=None, additiona
 
     # In UEFI you may technically have multiple signers.. this seems problematic if the 'top level certificate' is the trust anchor
     # So in order to pass `PKCS7_signatureVerify` all the signature's need to pass - no cheating allowed (strictly private key needs to match public key)
-    for i, signer in enumerate(signers[0]):
+    for i, signer in enumerate(signers):
 
         signers_certificate = signer[CERTIFICATE_FILE_PATH]
         signers_password = signer[CERTIFICATE_PASSWORD]
-
-        logger.error(signer)
-
         pkcs12_signer_blob = b""
+
         # read from the pfx file the pkcs12_blob
         with open(signers_certificate, 'rb') as f:
             pkcs12_signer_blob = f.read()
@@ -701,7 +699,7 @@ def typecheck_attributes(attributes):
 
 def setup_sign_parser(subparsers):
     """
-    Sets up the sign parser 
+    Sets up the sign parser
 
     :param subparsers: - sub parser from argparse to add options to
 
@@ -788,7 +786,6 @@ def setup_describe_parser(subparsers):
         "--split-content", default=False, action="store_true",
         help="splits the content out into 'content.bin'"
     )
-
 
     return subparsers
 

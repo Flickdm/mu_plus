@@ -220,6 +220,8 @@ function GenerateTestData {
         $FormatAuthVarArgs += $AdditionalCertificates
     }
     
+    Write-Host "$> python $FormatAuthVar sign " @FormatAuthVarArgs
+
     # Generate the empty authenticated vatriable
     python $FormatAuthVar sign $FormatAuthVarArgs
     if ($LASTEXITCODE -ne 0) {
@@ -260,7 +262,7 @@ function GenerateTestData {
         $FormatAuthVarArgs += "--additional-certificates"
         $FormatAuthVarArgs += $AdditionalCertificates
     }
-    
+
 
     # Generate the empty authenticated vatriable
     python $FormatAuthVar sign $FormatAuthVarArgs
