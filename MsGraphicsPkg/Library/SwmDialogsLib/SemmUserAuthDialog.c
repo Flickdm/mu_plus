@@ -1309,7 +1309,7 @@ VerifyThumbprintInternal (
   DIALOG_THEME                   DialogTheme;
   EFI_ABSOLUTE_POINTER_PROTOCOL  *PointerProtocol = NULL;
 
-  DEBUG ((DEBUG_VERBOSE, "DEBUG ENTER: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBU ENTER: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   // Validate caller arguments.
   //
@@ -1378,7 +1378,7 @@ VerifyThumbprintInternal (
                    &PointerProtocol,
                    &PaintEvent
                    );
-  DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "ERROR [UserAuth]: Failed to register the password dialog as a client: %r.\r\n", Status));
@@ -1400,7 +1400,7 @@ VerifyThumbprintInternal (
           TRUE
           );
   // Initialize Color Theme
-  DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   DialogTheme = InitializeTheme (Type);
 
@@ -1438,7 +1438,7 @@ VerifyThumbprintInternal (
               &PasswordString,
               &ThumbprintString
               );
-  DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   if (SWM_MB_IDOK == *Result) {
     if (Password != NULL) {
@@ -1455,7 +1455,7 @@ VerifyThumbprintInternal (
     }
   }
 
-  DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
   // Set client state inactive (messages will by default go to the default client).
   //
   this->ActivateWindow (
@@ -1466,7 +1466,7 @@ VerifyThumbprintInternal (
 
 Exit:
 
-  DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   // Unregister with the window manager as a client.
   //
@@ -1494,7 +1494,7 @@ Exit2:
     delete_Canvas (DialogCanvas);
   }
 
-  DEBUG ((DEBUG_VERBOSE, "DEBUG EXIT: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG EXIT: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   return Status;
 }

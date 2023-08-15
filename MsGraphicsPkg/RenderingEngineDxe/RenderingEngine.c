@@ -95,7 +95,7 @@ DrawMousePointer (
 {
   EFI_STATUS  Status = EFI_SUCCESS;
   UINTN       Index;
-  DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   // Restore the location where the mouse pointer currently resides with the original screen content.
   //
@@ -529,7 +529,7 @@ SREShowMousePointer (
   )
 {
   EFI_STATUS  Status = EFI_SUCCESS;
-  DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   // Refresh the mouse pointer region (to hide or show it) if the state changed.
   //
@@ -950,7 +950,7 @@ SREActivateSurface (
       );
   }
 
-  DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   // Set active state for the specified surface (note this assumes we'll find a match for ImageHandle).
   //
@@ -1054,7 +1054,7 @@ SREActivateSurface (
       );
   }
 
-  DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   // Restore the TPL.
   //

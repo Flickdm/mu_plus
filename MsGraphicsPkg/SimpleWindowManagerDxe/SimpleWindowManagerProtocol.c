@@ -488,7 +488,7 @@ SWMActivateWindow (
   // Restore the TPL.
   //
   gBS->RestoreTPL (PreviousTPL);
-  DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   return Status;
 }
@@ -778,7 +778,7 @@ SWMEnableMousePointer (
 {
   EFI_STATUS  Status = EFI_SUCCESS;
 
-  DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   // Save the enabled state for later.
   //
@@ -792,7 +792,7 @@ SWMEnableMousePointer (
     // If the last absolute pointer event required rendering the mouse pointer, we'll
     // render it immediately here instead of waiting for the next event.
     //
-    DEBUG ((DEBUG_VERBOSE, "DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+    DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
     Status = ShowMousePointer ();
   }
 
