@@ -280,6 +280,8 @@ EnableKeyboard (
 
   this->m_KeyboardEnabled = TRUE;
 
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+
   mOSKProtocol->SetKeyboardSize (mOSKProtocol, 75);
   mOSKProtocol->SetKeyboardPosition (mOSKProtocol, BottomRight, Docked);
   mOSKProtocol->ShowDockAndCloseButtons (mOSKProtocol, FALSE);
@@ -345,6 +347,9 @@ SetControlState (
   IN OBJECT_STATE  State
   )
 {
+
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+
   // Hide the keyboard (if it was being displayed).
   //
   if ((UIT_EDITBOX_TYPE_SELECTABLE != this->m_Type) && (State == KEYFOCUS)) {
@@ -353,6 +358,7 @@ SetControlState (
 
   if (this->m_State != State) {
     if (State == KEYFOCUS) {
+      DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
       EnableKeyboard (this);
     } else if (this->m_KeyboardEnabled) {
       this->m_KeyboardEnabled = FALSE;
@@ -425,6 +431,8 @@ Draw (
     this->m_State = NORMAL;
   }
 
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+
   // If there is no input state, simply draw the editbox then return.
   //
   if (NULL == pInputState) {
@@ -432,9 +440,13 @@ Draw (
       this,
       DrawHighlight
       );
+  
+    DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
     goto Exit;
   }
+
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
   // If there is user touch/mouse input, indicate we now have focus.
   //
@@ -442,6 +454,9 @@ Draw (
       (pInputState->State.TouchState.CurrentX >= pRect->Left) && (pInputState->State.TouchState.CurrentX <= pRect->Right) &&
       (pInputState->State.TouchState.CurrentY >= pRect->Top) && (pInputState->State.TouchState.CurrentY <= pRect->Bottom))
   {
+
+    DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+
     // Set focus so the canvas knows.
     //
     this->m_State = KEYFOCUS;
@@ -456,6 +471,9 @@ Draw (
     //
     goto Exit;
   }
+
+  DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
+
 
   // If there is user keyboard input, handle it here.
   //

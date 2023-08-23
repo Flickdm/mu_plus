@@ -871,11 +871,14 @@ ProcessDialogInput (
                                  &pContext
                                  );
 
+    DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
     // Keyboard input focus means the user used touch/mouse to select one of the edit boxes, display the on-screen keyboard.
     //
     if ((KEYFOCUS == State) && (NULL != mOSKProtocol) && (TRUE == DefaultPosition)) {
       SWM_RECT  CanvasRect;
       SWM_RECT  OSKRect;
+
+      DEBUG ((DEBUG_ERROR, "FINDME! DEBUG: %s:%d\r\n", __FUNCTION__, __LINE__));
 
       // Set client state inactive (messages will by default go to the default client).
       //
