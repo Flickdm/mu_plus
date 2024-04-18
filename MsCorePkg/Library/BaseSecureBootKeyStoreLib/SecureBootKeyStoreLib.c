@@ -14,6 +14,7 @@
 #include <Library/SecureBootVariableLib.h>
 #include <Library/PcdLib.h>
 
+
 SECURE_BOOT_PAYLOAD_INFO  mSecureBootPayload[] = {
   {
     .SecureBootKeyName = L"Microsoft Only",
@@ -69,6 +70,39 @@ GetPlatformKeyStore (
 
   *Keys     = mSecureBootPayload;
   *KeyCount = ARRAY_SIZE (mSecureBootPayload);
+
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+SetPlatformDefaultKeyStore (
+  VOID
+  )
+{
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+SecureBootInitDefaultVariable(
+  IN CONST UINT8 VariableName 
+  IN CONST UINT8  *Data,
+  IN UINTN        DataSize,
+  )
+{
+  EFI_STATUS Status;
+
+  
+  Status = gRT->GetVariable(
+                  EFI_IMAGE_SECURITY_DATABASE,
+                  &gEfiImageSecurityDatabaseGuid,
+                  NULL,
+                  NULL,
+                  NULL
+                  );
+
+
+
 
   return EFI_SUCCESS;
 }
