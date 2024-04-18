@@ -1,0 +1,1 @@
+extern UINT8 m3072VariableKeyLengthSupportMockVarEmpty[1913];

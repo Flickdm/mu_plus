@@ -1,0 +1,1 @@
+extern UINT8 mPreventRollbackPastVariableMockVarEmpty[2136];
