@@ -37,7 +37,20 @@ from tcg_platform import (
     VALUE_FROM_EVENT,
     ALG_FROM_VALUE,
     EVENT_FROM_VALUE,
+    EV_EFI_VARIABLE_DRIVER_CONFIG,
+    EV_EFI_VARIABLE_BOOT,
+    EV_EFI_VARIABLE_BOOT2,
+    EV_EFI_VARIABLE_AUTHORITY
 )
+
+from edk2toollib.uefi.authenticated_variables_structure_support import EfiSignatureDatabase, EfiSignatureDataFactory, EfiSignatureDataEfiCertX509, EfiSignatureDataEfiCertSha256
+
+from edk2toollib.utility_functions import hexdump
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes
+
+from io import BytesIO
 
 from enum import IntEnum
 from pathlib import PurePath
@@ -579,6 +592,76 @@ def _build_tpm_replay_event_log_from_yaml(
 
     return replay_event_log
 
+def _decode_efi_signature_data_x509(data):
+    cert = x509.load_der_x509_certificate(data)
+    cert_info = {
+        str(cert.subject): {
+            "fingerprint": cert.fingerprint(hashes.SHA1()).hex(":"),
+            "issuer": str(cert.issuer),
+            "not_valid_after_utc": str(cert.not_valid_after_utc),
+        }
+    }
+
+    return cert_info
+
+def _decode_efi_signature_data_sha256(signature) -> dict:
+    return {signature.signature_data.hex(): str(signature.signature_owner)}
+
+def _decode_variable_driver_config(data) -> dict:
+
+    driver_config = {}
+
+    with BytesIO(data) as fs:
+
+        for signature_list in EfiSignatureDatabase(filestream=fs).EslList:
+            if signature_list.signature_data_list is None:  # discard empty EfiSignatureLists
+                continue
+            if signature_list.signature_type == EfiSignatureDataFactory.EFI_CERT_SHA256_GUID:
+                 for signature in signature_list.signature_data_list:
+                    driver_config.update(_decode_efi_signature_data_sha256(signature))
+            elif signature_list.signature_type == EfiSignatureDataFactory.EFI_CERT_X509_GUID:
+                for sig_list in signature_list.signature_data_list:
+                    driver_config.update(
+                        _decode_efi_signature_data_x509(sig_list.signature_data))
+            else:
+                raise Exception("Unsupported signature type %s",
+                                signature_list.signature_type)
+
+    return driver_config
+
+def _decode_variable_authority(data) -> dict:
+    authority_data = {}
+
+    with BytesIO(data) as fs:
+        sig_list = EfiSignatureDataEfiCertX509(
+            decodefs=fs, decodesize=len(data))
+        authority_data.update(
+            _decode_efi_signature_data_x509(sig_list.signature_data))
+
+    return authority_data
+
+def _decode_is_enabled(data) -> dict:
+    return {"enabled": "True" if ord(data) == 1 else "False" }
+
+def _decode_value_dispatch(event_type, name, data) -> dict:
+
+    def _return_nothing(data):
+        return {}
+
+    func = {
+        f"SecureBoot+{EV_EFI_VARIABLE_DRIVER_CONFIG}": _decode_is_enabled,
+        f"PK+{EV_EFI_VARIABLE_DRIVER_CONFIG}": _decode_variable_driver_config,
+        f"KEK+{EV_EFI_VARIABLE_DRIVER_CONFIG}": _decode_variable_driver_config,
+        f"db+{EV_EFI_VARIABLE_DRIVER_CONFIG}": _decode_variable_driver_config,
+        f"dbx+{EV_EFI_VARIABLE_DRIVER_CONFIG}": _decode_variable_driver_config,
+        # TODO handle Boot, and BootXXXX
+        f"PK+{EV_EFI_VARIABLE_AUTHORITY}": _decode_variable_authority,
+        f"KEK+{EV_EFI_VARIABLE_AUTHORITY}": _decode_variable_authority,
+        f"db+{EV_EFI_VARIABLE_AUTHORITY}": _decode_variable_authority
+    }.get(f"{name}+{event_type}", _return_nothing)
+
+    return func(data)
+
 
 def _build_yaml_from_event_log(
     event_log: TpmReplayEventLog,
@@ -593,8 +676,6 @@ def _build_yaml_from_event_log(
         a string or additional nested dictionaries.
 
     """
-    import tcg_platform
-
     yaml_data = {"events": []}
 
     logger.debug("Processing events...")
@@ -615,10 +696,10 @@ def _build_yaml_from_event_log(
         event_data["data"] = {}
 
         if event.event_type in (
-            tcg_platform.EV_EFI_VARIABLE_DRIVER_CONFIG,
-            tcg_platform.EV_EFI_VARIABLE_BOOT,
-            tcg_platform.EV_EFI_VARIABLE_BOOT2,
-            tcg_platform.EV_EFI_VARIABLE_AUTHORITY,
+            EV_EFI_VARIABLE_DRIVER_CONFIG,
+            EV_EFI_VARIABLE_BOOT,
+            EV_EFI_VARIABLE_BOOT2,
+            EV_EFI_VARIABLE_AUTHORITY,
         ):
             event_data["data"]["type"] = "variable"
             tcg_var = TcgUefiVariableData.from_binary(event.event)
@@ -628,6 +709,8 @@ def _build_yaml_from_event_log(
             ] = tcg_var.unicode_name_length
             event_data["data"]["variable_data_length"] = tcg_var.variable_data_length
             event_data["data"]["variable_unicode_name"] = tcg_var.unicode_name
+            event_data["data"]["human_readable_value"] = _decode_value_dispatch(
+                event.event_type, tcg_var.unicode_name, tcg_var.variable_data)
             event_data["data"]["value"] = base64.b64encode(
                 tcg_var.variable_data
             ).decode("utf-8")
