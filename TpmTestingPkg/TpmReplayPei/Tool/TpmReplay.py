@@ -24,6 +24,13 @@ import timeit
 import yaml
 
 from edk2toollib.tpm.tpm2_defs import TPM_ALG_SHA256
+
+from edk2toollib.uefi.authenticated_variables_structure_support import (
+    EfiSignatureDatabase,
+    EfiSignatureDataFactory,
+    EfiSignatureDataEfiCertX509
+)
+
 from tcg_platform import (
     PCR_0,
     PCR_7,
@@ -40,12 +47,9 @@ from tcg_platform import (
     EV_EFI_VARIABLE_DRIVER_CONFIG,
     EV_EFI_VARIABLE_BOOT,
     EV_EFI_VARIABLE_BOOT2,
-    EV_EFI_VARIABLE_AUTHORITY
+    EV_EFI_VARIABLE_AUTHORITY,
+    EV_EFI_BOOT_SERVICES_APPLICATION
 )
-
-from edk2toollib.uefi.authenticated_variables_structure_support import EfiSignatureDatabase, EfiSignatureDataFactory, EfiSignatureDataEfiCertX509, EfiSignatureDataEfiCertSha256
-
-from edk2toollib.utility_functions import hexdump
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
@@ -643,10 +647,113 @@ def _decode_variable_authority(data) -> dict:
 def _decode_is_enabled(data) -> dict:
     return {"enabled": "True" if ord(data) == 1 else "False" }
 
+class DevicePath(object):
+    _hdr_struct_format = "<BBH"
+    _hdr_struct_size = struct.calcsize(_hdr_struct_format)
+
+    def __init__(self, type, sub_type, length, data):
+        self.type = type
+        self.sub_type = sub_type
+        self.length = length
+        self.data = data
+
+    def __str__(self):
+        return (
+            "DevicePath:\n"
+            f"  Type: {self.type}\n"
+            f"  SubType: {self.sub_type}\n"
+            f"  Length: {self.length}\n"
+            f"  Data: {self.data}\n"
+        )
+
+    def encode(self):
+        result = struct.pack(
+            self._hdr_struct_format,
+            self.type,
+            self.sub_type,
+        )
+        result += struct.pack("<H", self.length)
+        result += self.data
+        return result
+
+    @classmethod
+    def decode(cls, binary_data):
+
+        type, sub_type, length = struct.unpack_from(cls._hdr_struct_format, binary_data)
+        data = binary_data[cls._hdr_struct_size + 2:cls._hdr_struct_size + length]
+        next_path = binary_data[cls._hdr_struct_size + length:]
+
+        from edk2toollib.utility_functions import hexdump
+        hexdump(next_path)
+        return cls(type, sub_type, length, data)
+
+class EfiImageLoadEvent(object):
+    _hdr_struct_format = "<QQQQ"
+    _hdr_struct_size = struct.calcsize(_hdr_struct_format)
+
+    def __init__(self,
+            image_location_in_memory,
+            image_length_in_memory,
+            image_link_time_address,
+            length_of_device_path,
+            device_path):
+
+        self.image_location_in_memory = image_location_in_memory
+        self.image_length_in_memory = image_length_in_memory
+        self.image_link_time_address = image_link_time_address
+        self.length_of_device_path = length_of_device_path
+        self.device_path = DevicePath.decode(device_path)
+
+    def __str__(self):
+        return (
+            f"EfiImageLoadEvent:\n"
+            f"  ImageLocationInMemory: {hex(self.image_location_in_memory)}\n"
+            f"  ImageLengthInMemory: {hex(self.image_length_in_memory)}\n"
+            f"  ImageLinkTimeAddress: {hex(self.image_link_time_address)}\n"
+            f"  LengthOfDevicePath: {hex(self.length_of_device_path)}\n"
+            f"  {self.device_path}\n"
+        )
+
+    def encode(self):
+        result = struct.pack(
+            self._hdr_struct_format,
+            self.image_location_in_memory,
+            self.image_length_in_memory,
+            self.image_link_time_address,
+            self.length_of_device_path,
+        )
+        result += self.device_path.encode()
+        return result
+
+    @classmethod
+    def decode(cls, binary_data):
+        (
+            image_location_in_memory,
+            image_length_in_memory,
+            image_link_time_address,
+            length_of_device_path,
+        ) = struct.unpack_from(cls._hdr_struct_format, binary_data)
+        device_path = binary_data[cls._hdr_struct_size:]
+        return cls(
+            image_location_in_memory,
+            image_length_in_memory,
+            image_link_time_address,
+            length_of_device_path,
+            device_path,
+        )
+
+def decode_efi_boot_services_application_event(data):
+    print(EfiImageLoadEvent.decode(data))
+
+    return {}
+
 def _decode_value_dispatch(event_type, name, data) -> dict:
 
     def _return_nothing(data):
         return {}
+
+    # ideally the variable name isn't required, but until BOOT and BootXXXX are
+    # handled it is required
 
     func = {
         f"SecureBoot+{EV_EFI_VARIABLE_DRIVER_CONFIG}": _decode_is_enabled,
@@ -657,7 +764,8 @@ def _decode_value_dispatch(event_type, name, data) -> dict:
         # TODO handle Boot, and BootXXXX
         f"PK+{EV_EFI_VARIABLE_AUTHORITY}": _decode_variable_authority,
         f"KEK+{EV_EFI_VARIABLE_AUTHORITY}": _decode_variable_authority,
-        f"db+{EV_EFI_VARIABLE_AUTHORITY}": _decode_variable_authority
+        f"db+{EV_EFI_VARIABLE_AUTHORITY}": _decode_variable_authority,
+        f"+{EV_EFI_BOOT_SERVICES_APPLICATION}": decode_efi_boot_services_application_event
     }.get(f"{name}+{event_type}", _return_nothing)
 
     return func(data)
@@ -717,6 +825,15 @@ def _build_yaml_from_event_log(
 
             logger.debug(f"    {event_data['data']['type']} event detected.")
             logger.debug(f"      {str(tcg_var)}")
+
+        elif event.event_type == EV_EFI_BOOT_SERVICES_APPLICATION:
+            event_data["data"]["type"] = "base64"
+            event_data["data"]["value"] = base64.b64encode(event.event).decode(
+                "utf-8"
+            )
+            event_data["data"]["human_readable_value"] = _decode_value_dispatch(
+                event.event_type, "", event.event)
+
         else:
             char_result = chardet.detect(event.event)
 
